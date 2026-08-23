@@ -18,7 +18,7 @@ function upsertUser(name: string, email: string, password: string, coupleId: str
   return id;
 }
 
-function run() {
+export function seedDemoData() {
   console.log('Demo verisi oluşturuluyor (Elif + Deniz)...');
 
   let couple: any = db.prepare('SELECT * FROM couples LIMIT 1').get();
@@ -104,4 +104,6 @@ function run() {
   console.log('İkisi de aynı couple kaydına eşleşmiş durumda, ayrıca eşleşme akışını denemek için birini silip /api/auth/pair ile tekrar bağlayabilirsin.\n');
 }
 
-run();
+if (require.main === module) {
+  seedDemoData();
+}

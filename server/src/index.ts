@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
+import { seedDemoData } from './seed';
 import authRouter from './routes/auth';
 import meRouter from './routes/me';
 import reunionRouter from './routes/reunion';
@@ -38,6 +39,20 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   console.error(err);
   res.status(500).json({ error: 'Sunucu hatası.' });
 });
+
+// Ücretsiz Render planında dosya sistemi kalıcı değil: servis her uyanışta/
+// yeniden başlayışta SQLite dosyası sıfırlanıyor ve Shell sekmesi (npm run
+// seed) ücretsiz planda kullanılamıyor. Bu yüzden demo verisini her
+// başlangıçta otomatik oluşturuyoruz; seedDemoData() zaten var olan kayıtları
+// atladığı için (idempotent) veri zaten duruyorsa hiçbir şeyi değiştirmez.
+// Devre dışı bırakmak istersen ortam değişkeni olarak AUTO_SEED=false ekle.
+if (process.env.AUTO_SEED !== 'false') {
+  try {
+    seedDemoData();
+  } catch (err) {
+    console.error('Demo verisi oluşturulurken hata oluştu:', err);
+  }
+}
 
 const PORT = Number(process.env.PORT) || 4000;
 app.listen(PORT, () => {
