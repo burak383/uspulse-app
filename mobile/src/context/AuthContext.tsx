@@ -1,0 +1,324 @@
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
+import * as LocalAuthentication from 'expo-local-authentication';
+import { api, ApiError, setAuthToken } from '../api/client';
+import { AuthResponse, Couple, ForgotPasswordResponse, MeResponse, PublicUser } from '../api/types';
+
+const TOKEN_KEY = 'uspulse_token';
+// expo-secure-store keys can only contain word characters, '.', '-'.
+const BIOMETRIC_TOKEN_KEY = 'uspulse-biometric-token';
+const BIOMETRIC_FLAG_KEY = 'uspulse_biometric_enabled';
+
+type Status = 'loading' | 'signedOut' | 'signedIn';
+
+function labelForBiometricTypes(types: LocalAuthentication.AuthenticationType[]): string {
+  if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
+    return Platform.OS === 'ios' ? 'Face ID' : 'Yüz tanıma';
+  }
+  if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
+    return 'Parmak izi';
+  }
+  if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) {
+    return 'İris taraması';
+  }
+  return 'Biyometrik kimlik doğrulama';
+}
+
+interface AuthContextValue {
+  status: Status;
+  user: PublicUser | null;
+  partner: PublicUser | null;
+  couple: Couple | null;
+  error: string | null;
+  login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
+  loginWithGoogle: (idToken: string) => Promise<void>;
+  forgotPassword: (email: string) => Promise<ForgotPasswordResponse>;
+  resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
+  pair: (code: string) => Promise<void>;
+  logout: () => Promise<void>;
+  refresh: () => Promise<void>;
+  clearError: () => void;
+  // Biyometrik (Face ID / parmak izi) hızlı giriş.
+  biometricHardwareReady: boolean;
+  biometricLabel: string;
+  biometricEnabled: boolean;
+  enableBiometric: () => Promise<void>;
+  disableBiometric: () => Promise<void>;
+  loginWithBiometric: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [status, setStatus] = useState<Status>('loading');
+  const [user, setUser] = useState<PublicUser | null>(null);
+  const [partner, setPartner] = useState<PublicUser | null>(null);
+  const [couple, setCouple] = useState<Couple | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [biometricHardwareReady, setBiometricHardwareReady] = useState(false);
+  const [biometricLabel, setBiometricLabel] = useState('Biyometrik kimlik doğrulama');
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [hasHardware, isEnrolled, types, enabledFlag] = await Promise.all([
+          LocalAuthentication.hasHardwareAsync(),
+          LocalAuthentication.isEnrolledAsync(),
+          LocalAuthentication.supportedAuthenticationTypesAsync(),
+          AsyncStorage.getItem(BIOMETRIC_FLAG_KEY),
+        ]);
+        setBiometricHardwareReady(hasHardware && isEnrolled);
+        setBiometricLabel(labelForBiometricTypes(types));
+        setBiometricEnabled(enabledFlag === '1');
+      } catch {
+        // biometrics simply won't be offered
+      }
+    })();
+  }, []);
+
+  const applyMe = useCallback((me: MeResponse) => {
+    setUser(me.user);
+    setPartner(me.partner);
+    setCouple(me.couple);
+  }, []);
+
+  const refresh = useCallback(async () => {
+    try {
+      const me = await api.get<MeResponse>('/me');
+      applyMe(me);
+      setStatus('signedIn');
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        await AsyncStorage.removeItem(TOKEN_KEY);
+        setAuthToken(null);
+        setUser(null);
+        setPartner(null);
+        setCouple(null);
+        setStatus('signedOut');
+      }
+    }
+  }, [applyMe]);
+
+  useEffect(() => {
+    (async () => {
+      const stored = await AsyncStorage.getItem(TOKEN_KEY);
+      if (!stored) {
+        setStatus('signedOut');
+        return;
+      }
+      setAuthToken(stored);
+      await refresh();
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleAuthResponse = useCallback(async (res: AuthResponse) => {
+    await AsyncStorage.setItem(TOKEN_KEY, res.token);
+    setAuthToken(res.token);
+    setUser(res.user);
+    setPartner(null);
+    setCouple(null);
+    setStatus('signedIn');
+  }, []);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      setError(null);
+      try {
+        const res = await api.post<AuthResponse>('/auth/login', { email, password });
+        await handleAuthResponse(res);
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Giriş başarısız oldu.');
+        throw e;
+      }
+    },
+    [handleAuthResponse, refresh],
+  );
+
+  const register = useCallback(
+    async (name: string, email: string, password: string) => {
+      setError(null);
+      try {
+        const res = await api.post<AuthResponse>('/auth/register', { name, email, password });
+        await handleAuthResponse(res);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Kayıt başarısız oldu.');
+        throw e;
+      }
+    },
+    [handleAuthResponse],
+  );
+
+  const loginWithGoogle = useCallback(
+    async (idToken: string) => {
+      setError(null);
+      try {
+        const res = await api.post<AuthResponse>('/auth/google', { idToken });
+        await handleAuthResponse(res);
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Google ile giriş başarısız oldu.');
+        throw e;
+      }
+    },
+    [handleAuthResponse, refresh],
+  );
+
+  const forgotPassword = useCallback(async (email: string) => {
+    setError(null);
+    try {
+      return await api.post<ForgotPasswordResponse>('/auth/forgot-password', { email });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'İstek başarısız oldu.');
+      throw e;
+    }
+  }, []);
+
+  const resetPassword = useCallback(
+    async (email: string, code: string, newPassword: string) => {
+      setError(null);
+      try {
+        const res = await api.post<AuthResponse>('/auth/reset-password', { email, code, newPassword });
+        await handleAuthResponse(res);
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Şifre sıfırlama başarısız oldu.');
+        throw e;
+      }
+    },
+    [handleAuthResponse, refresh],
+  );
+
+  const pair = useCallback(
+    async (code: string) => {
+      setError(null);
+      try {
+        await api.post('/auth/pair', { code });
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Eşleşme başarısız oldu.');
+        throw e;
+      }
+    },
+    [refresh],
+  );
+
+  const logout = useCallback(async () => {
+    await AsyncStorage.removeItem(TOKEN_KEY);
+    setAuthToken(null);
+    setUser(null);
+    setPartner(null);
+    setCouple(null);
+    setStatus('signedOut');
+    // Face ID / parmak izi kaydı bilerek silinmiyor: kullanıcı çıkış yapıp
+    // aynı cihazdan tekrar açtığında yine biyometrik olarak girebilsin diye.
+    // Tamamen kaldırmak isteyen disableBiometric() çağırabilir.
+  }, []);
+
+  const enableBiometric = useCallback(async () => {
+    const token = await AsyncStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      throw new Error('Biyometrik girişi etkinleştirmek için önce giriş yapmalısın.');
+    }
+    await SecureStore.setItemAsync(BIOMETRIC_TOKEN_KEY, token);
+    await AsyncStorage.setItem(BIOMETRIC_FLAG_KEY, '1');
+    setBiometricEnabled(true);
+  }, []);
+
+  const disableBiometric = useCallback(async () => {
+    await SecureStore.deleteItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
+    await AsyncStorage.removeItem(BIOMETRIC_FLAG_KEY);
+    setBiometricEnabled(false);
+  }, []);
+
+  const loginWithBiometric = useCallback(async () => {
+    setError(null);
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!hasHardware || !isEnrolled) {
+        throw new Error('Bu cihazda biyometrik kimlik doğrulama kurulu değil.');
+      }
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Kimliğini doğrula',
+        cancelLabel: 'Vazgeç',
+        disableDeviceFallback: false,
+      });
+      if (!result.success) {
+        throw new Error('Kimlik doğrulama tamamlanamadı.');
+      }
+      const token = await SecureStore.getItemAsync(BIOMETRIC_TOKEN_KEY);
+      if (!token) {
+        throw new Error('Kayıtlı bir oturum bulunamadı. Lütfen şifreyle giriş yap.');
+      }
+      await AsyncStorage.setItem(TOKEN_KEY, token);
+      setAuthToken(token);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Giriş başarısız oldu.');
+      throw e;
+    }
+  }, [refresh]);
+
+  const clearError = useCallback(() => setError(null), []);
+
+  const value = useMemo(
+    () => ({
+      status,
+      user,
+      partner,
+      couple,
+      error,
+      login,
+      register,
+      loginWithGoogle,
+      forgotPassword,
+      resetPassword,
+      pair,
+      logout,
+      refresh,
+      clearError,
+      biometricHardwareReady,
+      biometricLabel,
+      biometricEnabled,
+      enableBiometric,
+      disableBiometric,
+      loginWithBiometric,
+    }),
+    [
+      status,
+      user,
+      partner,
+      couple,
+      error,
+      login,
+      register,
+      loginWithGoogle,
+      forgotPassword,
+      resetPassword,
+      pair,
+      logout,
+      refresh,
+      clearError,
+      biometricHardwareReady,
+      biometricLabel,
+      biometricEnabled,
+      enableBiometric,
+      disableBiometric,
+      loginWithBiometric,
+    ],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth(): AuthContextValue {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within an AuthProvider');
+  return ctx;
+}

@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "UsPulse",
+    "slug": "uspulse",
+    "version": "1.0.0",
+    "scheme": "uspulse",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#34243A"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.uspulse.mobile"
+    },
+    "android": {
+      "package": "app.uspulse.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#34243A"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "extra": {
+      "apiUrl": "http://localhost:4000/api"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Hesabına hızlıca giriş yapmak için Face ID kullanılır."
+        }
+      ]
+    ]
+  }
+}
