@@ -121,9 +121,17 @@ function ensureColumn(table: string, column: string, ddl: string) {
   }
 }
 ensureColumn('users', 'google_id', 'google_id TEXT');
+ensureColumn('users', 'facebook_id', 'facebook_id TEXT');
 ensureColumn('users', 'reset_code_hash', 'reset_code_hash TEXT');
 ensureColumn('users', 'reset_code_expires', 'reset_code_expires TEXT');
+// Yaklaşık konum: sadece iki eşleşmiş kullanıcı arasındaki mesafeyi
+// hesaplamak için tutulur. Kesin enlem/boylam API üzerinden partnere ASLA
+// döndürülmez -- sadece hesaplanmış mesafe (km) paylaşılır, bkz. routes/me.ts.
+ensureColumn('users', 'lat', 'lat REAL');
+ensureColumn('users', 'lng', 'lng REAL');
+ensureColumn('users', 'location_updated_at', 'location_updated_at TEXT');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL;');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_id ON users(facebook_id) WHERE facebook_id IS NOT NULL;');
 
 const questionCount = (db.prepare('SELECT COUNT(*) as c FROM questions_bank').get() as { c: number }).c;
 if (questionCount === 0) {

@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
+import * as Location from 'expo-location';
 import { api, ApiError, setAuthToken } from '../api/client';
 import { AuthResponse, Couple, ForgotPasswordResponse, MeResponse, PublicUser } from '../api/types';
 
@@ -50,6 +51,14 @@ interface AuthContextValue {
   enableBiometric: () => Promise<void>;
   disableBiometric: () => Promise<void>;
   loginWithBiometric: () => Promise<void>;
+  // Partnere aranızdaki YAKLAŞIK mesafeyi göstermek için konum paylaşımı.
+  // Kesin enlem/boylam hiçbir zaman partnere ya da istemci koduna dönmez.
+  distanceKm: number | null;
+  locationSharedByMe: boolean;
+  locationSharedByPartner: boolean;
+  locationSubmitting: boolean;
+  shareLocationNow: () => Promise<void>;
+  stopSharingLocation: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -63,6 +72,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [biometricHardwareReady, setBiometricHardwareReady] = useState(false);
   const [biometricLabel, setBiometricLabel] = useState('Biyometrik kimlik doğrulama');
   const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
+  const [locationSharedByMe, setLocationSharedByMe] = useState(false);
+  const [locationSharedByPartner, setLocationSharedByPartner] = useState(false);
+  const [locationSubmitting, setLocationSubmitting] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -86,6 +99,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(me.user);
     setPartner(me.partner);
     setCouple(me.couple);
+    setDistanceKm(me.distanceKm);
+    setLocationSharedByMe(me.locationSharedByMe);
+    setLocationSharedByPartner(me.locationSharedByPartner);
+  }, []);
+
+  // Konumu izin varsa sessizce paylaşır; izin yoksa/istenmezse ya da GPS/ağ
+  // hatası olursa görünmez şekilde vazgeçer -- giriş akışını ASLA engellemez
+  // ya da hata göstermez. "Uygulamaya giriş yapıldığında konum alınsın"
+  // isteğinin arka plandaki, kullanıcıyı rahatsız etmeyen karşılığı budur;
+  // kalıcı red/izin durumları için açık, geri bildirimli shareLocationNow da var.
+  const shareLocationBestEffort = useCallback(async () => {
+    try {
+      const current = await Location.getForegroundPermissionsAsync();
+      let granted = current.status === Location.PermissionStatus.GRANTED;
+      if (!granted && current.canAskAgain) {
+        const requested = await Location.requestForegroundPermissionsAsync();
+        granted = requested.status === Location.PermissionStatus.GRANTED;
+      }
+      if (!granted) return;
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      await api.put('/me/location', { lat: pos.coords.latitude, lng: pos.coords.longitude });
+      setLocationSharedByMe(true);
+    } catch {
+      // konum paylaşılamadı: sessizce geç
+    }
   }, []);
 
   const refresh = useCallback(async () => {
@@ -93,6 +131,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const me = await api.get<MeResponse>('/me');
       applyMe(me);
       setStatus('signedIn');
+      // Sadece eşleşmiş kullanıcılar için anlamlı (mesafe hesaplamak üzere) --
+      // eşleşmemiş bir hesaba konum izni sormanın bir faydası yok.
+      if (me.user.coupleId) {
+        shareLocationBestEffort();
+      }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         await AsyncStorage.removeItem(TOKEN_KEY);
@@ -100,10 +143,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(null);
         setPartner(null);
         setCouple(null);
+        setDistanceKm(null);
+        setLocationSharedByMe(false);
+        setLocationSharedByPartner(false);
         setStatus('signedOut');
       }
     }
-  }, [applyMe]);
+  }, [applyMe, shareLocationBestEffort]);
+
+  const shareLocationNow = useCallback(async () => {
+    setError(null);
+    setLocationSubmitting(true);
+    try {
+      const current = await Location.getForegroundPermissionsAsync();
+      let granted = current.status === Location.PermissionStatus.GRANTED;
+      if (!granted) {
+        const requested = await Location.requestForegroundPermissionsAsync();
+        granted = requested.status === Location.PermissionStatus.GRANTED;
+      }
+      if (!granted) {
+        throw new Error('Konum izni verilmedi. Ayarlardan UsPulse için konum iznini açabilirsin.');
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      await api.put('/me/location', { lat: pos.coords.latitude, lng: pos.coords.longitude });
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Konum paylaşılamadı.');
+      throw e;
+    } finally {
+      setLocationSubmitting(false);
+    }
+  }, [refresh]);
+
+  const stopSharingLocation = useCallback(async () => {
+    setError(null);
+    setLocationSubmitting(true);
+    try {
+      await api.delete('/me/location');
+      setLocationSharedByMe(false);
+      setDistanceKm(null);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Konum paylaşımı kapatılamadı.');
+      throw e;
+    } finally {
+      setLocationSubmitting(false);
+    }
+  }, [refresh]);
 
   useEffect(() => {
     (async () => {
@@ -231,6 +317,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setPartner(null);
     setCouple(null);
+    setDistanceKm(null);
+    setLocationSharedByMe(false);
+    setLocationSharedByPartner(false);
     setStatus('signedOut');
     // Face ID / parmak izi kaydı bilerek silinmiyor: kullanıcı çıkış yapıp
     // aynı cihazdan tekrar açtığında yine biyometrik olarak girebilsin diye.
@@ -253,6 +342,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setPartner(null);
     setCouple(null);
+    setDistanceKm(null);
+    setLocationSharedByMe(false);
+    setLocationSharedByPartner(false);
     setBiometricEnabled(false);
     setStatus('signedOut');
   }, []);
@@ -328,6 +420,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       enableBiometric,
       disableBiometric,
       loginWithBiometric,
+      distanceKm,
+      locationSharedByMe,
+      locationSharedByPartner,
+      locationSubmitting,
+      shareLocationNow,
+      stopSharingLocation,
     }),
     [
       status,
@@ -352,6 +450,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       enableBiometric,
       disableBiometric,
       loginWithBiometric,
+      distanceKm,
+      locationSharedByMe,
+      locationSharedByPartner,
+      locationSubmitting,
+      shareLocationNow,
+      stopSharingLocation,
     ],
   );
 

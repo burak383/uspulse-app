@@ -73,14 +73,16 @@ router.get('/privacy', (_req, res) => {
       <ul>
         <li><strong>Hesap bilgileri:</strong> adın, e-posta adresin ve şifrenin şifrelenmiş (hash'lenmiş) hâli. Google veya Facebook ile giriş yaparsan, o hesabından paylaşılmasına izin verdiğin ad, e-posta ve profil kimliği.</li>
         <li><strong>Uygulama içi içerik:</strong> paylaştığın ruh hâli, gönderdiğin "kalp" (dokunuş) etkileşimlerinin zaman damgası, yazdığın anılar/notlar, günün sorusuna verdiğin cevaplar, eklediğin planlar ve birikim katkıları.</li>
+        <li><strong>Konum (opsiyonel):</strong> Biz sekmesinden konum paylaşımını açarsan, cihazının yaklaşık enlem/boylamını sunucuya göndeririz. Bunu <strong>istediğin zaman kapatabilirsin</strong>; kapatınca sunucudaki kaydı da silinir.</li>
         <li><strong>Teknik veriler:</strong> sunucu barındırma sağlayıcımızın (Render) tuttuğu standart erişim kayıtları (ör. IP adresi, istek zamanı) — bunlar güvenlik ve hata ayıklama amacıyla kısa süreliğine tutulur.</li>
       </ul>
-      <p><strong>Konum verisi toplamıyoruz.</strong> Uygulama kesin konumunuzu hiçbir zaman istemez, kaydetmez ya da paylaşmaz.</p>
+      <p><strong>Kesin konumun asla partnerine gösterilmez.</strong> Konum paylaşımını açtığında bile, hem sen hem partnerin paylaştıysa yalnızca ikiniz arasındaki hesaplanmış yaklaşık mesafe (km) partnerine gösterilir — kendi enlem/boylamın uygulamanın hiçbir ekranında, hiçbir API yanıtında partnerine ya da başka birine gönderilmez.</p>
 
       <h2>Verilerini ne için kullanıyoruz</h2>
       <ul>
         <li>Hesabını oluşturmak, giriş yapmanı sağlamak ve seni partnerinle eşleştirmek.</li>
         <li>Paylaştığın ruh hâli, anı, plan ve diğer içerikleri sadece seninle eşleşmiş partnerine göstermek.</li>
+        <li>İkiniz de konum paylaşımını açtıysanız, aranızdaki yaklaşık mesafeyi hesaplayıp göstermek.</li>
         <li>Şifre sıfırlama gibi hesap güvenliği işlemlerini yürütmek.</li>
       </ul>
       <p>Verilerin reklam amacıyla kullanılmaz, satılmaz ve üçüncü taraflarla paylaşılmaz — Google/Facebook ile giriş yaptığında yalnızca kimliğini doğrulamak için o sağlayıcılarla iletişime geçilir.</p>
@@ -152,6 +154,9 @@ router.get('/data-deletion', (_req, res) => {
         <li>Onaylayınca; ruh hâli geçmişin, gönderdiğin dokunuşlar, yazdığın anılar, günün sorusuna verdiğin cevaplar ve eklediğin plan/birikim katkıların dâhil hesabın ve tüm kişisel verilerin sunucudan kalıcı ve geri alınamaz şekilde silinir.</li>
       </ol>
       <p>Bu işlem yalnızca kendi hesabını ve kendi eklediğin içerikleri siler; partnerinin hesabı etkilenmez.</p>
+
+      <h2>Yalnızca konum verini silmek istiyorsan</h2>
+      <p>Hesabının tamamını silmeden sadece konum paylaşımını kapatmak istersen, <strong>Biz</strong> sekmesindeki "Konum" satırına dokunup kapatabilirsin — bu, sunucudaki enlem/boylam kaydını hemen siler.</p>
 
       <h2>Facebook veya Google üzerinden giriş yaptıysan</h2>
       <p>Uygulama içinden hesabını sildiğinde, Facebook/Google hesabınla olan bağlantımız da (ilişkilendirilmiş kimlik bilgisi) veritabanımızdan silinir. Ayrıca Facebook/Google hesap ayarlarından "Bağlı Uygulamalar" listesinden ${APP_NAME}'ü kaldırmak istersen bu adımı ilgili platform üzerinden ayrıca yapabilirsin — bu, o platformdaki izin kaydını temizler.</p>

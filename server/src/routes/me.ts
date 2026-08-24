@@ -15,10 +15,23 @@ function publicUser(row: any) {
   };
 }
 
+// Haversine formülü: iki enlem/boylam noktası arasındaki kuş uçuşu mesafe (km).
+function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // Dünya yarıçapı (km)
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 router.get('/', requireAuth, (req, res) => {
   const me = req.user!;
-  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(me.id);
-  let partner = null;
+  const row: any = db.prepare('SELECT * FROM users WHERE id = ?').get(me.id);
+  let partner: any = null;
   let couple = null;
   if (me.coupleId) {
     couple = db.prepare('SELECT * FROM couples WHERE id = ?').get(me.coupleId);
@@ -26,11 +39,53 @@ router.get('/', requireAuth, (req, res) => {
       .prepare('SELECT * FROM users WHERE couple_id = ? AND id != ?')
       .get(me.coupleId, me.id);
   }
+
+  // Gizlilik: partnere ASLA kendi enlem/boylamını ya da benim enlem/
+  // boylamımı döndürmüyoruz -- sadece ikisi de konum paylaştıysa hesaplanan
+  // mesafeyi (km) paylaşıyoruz. Hiçbiri paylaşmadıysa/tek biri paylaştıysa
+  // distanceKm null döner ve mobil taraf bunu "henüz paylaşılmadı" olarak gösterir.
+  let distance: number | null = null;
+  const iShared = row.lat != null && row.lng != null;
+  const partnerShared = Boolean(partner && partner.lat != null && partner.lng != null);
+  if (iShared && partnerShared) {
+    distance = Math.round(distanceKm(row.lat, row.lng, partner.lat, partner.lng));
+  }
+
   res.json({
     user: publicUser(row),
     partner: partner ? publicUser(partner) : null,
     couple,
+    distanceKm: distance,
+    locationSharedByMe: iShared,
+    locationSharedByPartner: partnerShared,
   });
+});
+
+router.put('/location', requireAuth, (req, res) => {
+  const { lat, lng } = req.body ?? {};
+  const latNum = Number(lat);
+  const lngNum = Number(lng);
+  if (
+    !Number.isFinite(latNum) ||
+    !Number.isFinite(lngNum) ||
+    latNum < -90 ||
+    latNum > 90 ||
+    lngNum < -180 ||
+    lngNum > 180
+  ) {
+    return res.status(400).json({ error: 'Geçerli bir lat/lng gerekli.' });
+  }
+  db.prepare(
+    "UPDATE users SET lat = ?, lng = ?, location_updated_at = datetime('now') WHERE id = ?",
+  ).run(latNum, lngNum, req.user!.id);
+  res.status(204).end();
+});
+
+router.delete('/location', requireAuth, (req, res) => {
+  db.prepare('UPDATE users SET lat = NULL, lng = NULL, location_updated_at = NULL WHERE id = ?').run(
+    req.user!.id,
+  );
+  res.status(204).end();
 });
 
 // Hesap ve tüm kişisel verilerin silinmesi (KVKK/GDPR ve Facebook'un "User

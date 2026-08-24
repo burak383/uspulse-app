@@ -36,6 +36,12 @@
         {
           "faceIDPermission": "Hesabına hızlıca giriş yapmak için Face ID kullanılır."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Partnerinle aranızdaki yaklaşık mesafeyi hesaplayabilmek için konumun kullanılır. Kesin konumun asla partnerine gösterilmez, sadece aradaki mesafe paylaşılır."
+        }
       ]
     ]
   }

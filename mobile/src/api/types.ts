@@ -19,6 +19,10 @@ export interface MeResponse {
   user: PublicUser;
   partner: PublicUser | null;
   couple: Couple | null;
+  /** Kuş uçuşu mesafe (km), yalnızca ikiniz de konum paylaştıysanız dolu gelir. */
+  distanceKm: number | null;
+  locationSharedByMe: boolean;
+  locationSharedByPartner: boolean;
 }
 
 export interface AuthResponse {

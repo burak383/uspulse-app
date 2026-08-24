@@ -95,23 +95,42 @@ function PrivacyRow({
   label,
   color,
   value,
+  active = true,
+  onPress,
+  loading = false,
 }: {
   icon: IconName;
   label: string;
   color: string;
   value: string;
+  active?: boolean;
+  onPress?: () => void;
+  loading?: boolean;
 }) {
+  const toggleColor = active ? colors.success : colors.mutedForeground;
   return (
-    <View style={styles.privacyRow}>
+    <Pressable
+      style={styles.privacyRow}
+      onPress={onPress}
+      disabled={!onPress || loading}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={onPress ? `${label}: ${value}, değiştirmek için dokun` : undefined}
+    >
       <View style={styles.rowLabel}>
         <Icon name={icon} size={19} color={color} />
         <Text style={styles.bodyText}>{label}</Text>
       </View>
       <View style={styles.rowValue}>
-        <Text style={[styles.smallBold, { color: colors.success }]}>{value}</Text>
-        <Icon name="toggle-switch" size={24} color={colors.success} />
+        {loading ? (
+          <ActivityIndicator size="small" color={toggleColor} />
+        ) : (
+          <>
+            <Text style={[styles.smallBold, { color: toggleColor }]}>{value}</Text>
+            <Icon name={active ? 'toggle-switch' : 'toggle-switch-off-outline'} size={24} color={toggleColor} />
+          </>
+        )}
       </View>
-    </View>
+    </Pressable>
   );
 }
 
@@ -125,10 +144,47 @@ function daysSince(dateStr?: string | null) {
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function TogetherScreen({ navigation }: { navigation: NavProp }) {
-  const { user, partner, couple, logout, deleteAccount } = useAuth();
+  const {
+    user,
+    partner,
+    couple,
+    logout,
+    deleteAccount,
+    distanceKm,
+    locationSharedByMe,
+    locationSharedByPartner,
+    locationSubmitting,
+    shareLocationNow,
+    stopSharingLocation,
+  } = useAuth();
   const [touches, setTouches] = useState<TouchesResponse | null>(null);
   const [lockedMemories, setLockedMemories] = useState(0);
   const [deleting, setDeleting] = useState(false);
+
+  const toggleLocationSharing = () => {
+    if (locationSharedByMe) {
+      Alert.alert(
+        'Konum paylaşımını kapat',
+        'Kapatırsan aranızdaki mesafe artık gösterilmez. Partnerinin konumu bu uygulamada zaten hiçbir zaman görünmüyor, sadece hesaplanan mesafe gösteriliyordu.',
+        [
+          { text: 'Vazgeç', style: 'cancel' },
+          {
+            text: 'Kapat',
+            style: 'destructive',
+            onPress: () => {
+              stopSharingLocation().catch(() => {
+                Alert.alert('Konum paylaşımı kapatılamadı', 'Lütfen tekrar dene.');
+              });
+            },
+          },
+        ],
+      );
+      return;
+    }
+    shareLocationNow().catch((e) => {
+      Alert.alert('Konum paylaşılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
+    });
+  };
 
   const confirmDeleteAccount = () => {
     Alert.alert(
@@ -325,7 +381,34 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
             </Text>
           </View>
 
+          {locationSharedByMe && (
+            <View style={styles.distanceCard}>
+              <RoundIcon name="map-marker-distance" color={colors.primary} backgroundColor={colors.primary} size={19} />
+              <View style={styles.flex}>
+                {locationSharedByPartner && distanceKm != null ? (
+                  <>
+                    <Text style={styles.distanceValue}>~{distanceKm} km</Text>
+                    <Text style={styles.caption}>{partner?.name ?? 'Partnerin'} ile aranızdaki mesafe</Text>
+                  </>
+                ) : (
+                  <Text style={styles.caption}>
+                    {partner ? `${partner.name} henüz konum paylaşmadı.` : 'Mesafe için partnerinin de paylaşması gerekiyor.'}
+                  </Text>
+                )}
+              </View>
+            </View>
+          )}
+
           <View style={styles.privacyList}>
+            <PrivacyRow
+              icon="map-marker-radius-outline"
+              label="Konum (yaklaşık mesafe için)"
+              color={colors.primary}
+              value={locationSharedByMe ? 'Paylaşılıyor' : 'Kapalı'}
+              active={locationSharedByMe}
+              loading={locationSubmitting}
+              onPress={toggleLocationSharing}
+            />
             <PrivacyRow icon="creation" label="Ruh hâli" color={colors.accent} value="Paylaşılıyor" />
             <PrivacyRow icon="widgets-outline" label="Widget görünümü" color={colors.primary} value="Açık" />
             <PrivacyRow icon="vibrate" label="Haptik dokunuşlar" color={colors.primary} value="Açık" />
@@ -648,6 +731,22 @@ const styles = StyleSheet.create({
   successBold: {
     color: colors.successForeground,
     fontWeight: '800',
+  },
+  distanceCard: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.muted,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  distanceValue: {
+    color: colors.foreground,
+    fontFamily: theme.fonts.heading,
+    fontSize: 20,
   },
   privacyList: {
     marginTop: 10,
