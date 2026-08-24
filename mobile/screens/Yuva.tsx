@@ -18,7 +18,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api/client';
-import { MoodResponse, TodayQuestion, TouchesResponse } from '../src/api/types';
+import { MoodResponse, NotificationsResponse, TodayQuestion, TouchesResponse } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 
 const { colors, fonts } = theme;
@@ -110,17 +110,20 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
   const [touches, setTouches] = useState<TouchesResponse | null>(null);
   const [question, setQuestion] = useState<TodayQuestion | null>(null);
   const [sendingHeart, setSendingHeart] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationsResponse | null>(null);
 
   const loadAll = useCallback(async () => {
     try {
-      const [moodRes, touchesRes, questionRes] = await Promise.all([
+      const [moodRes, touchesRes, questionRes, notificationsRes] = await Promise.all([
         api.get<MoodResponse>('/mood'),
         api.get<TouchesResponse>('/touches'),
         api.get<TodayQuestion>('/questions/today'),
+        api.get<NotificationsResponse>('/notifications'),
       ]);
       setMood(moodRes);
       setTouches(touchesRes);
       setQuestion(questionRes);
+      setNotifications(notificationsRes);
     } catch {
       // best-effort: leave previous state on screen if a refresh fails
     }
@@ -196,20 +199,36 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
             <Pressable
               accessibilityLabel="Bildirimler"
               style={styles.notificationButton}
-              onPress={() => {
-                const recent = touches?.recent ?? [];
-                if (recent.length === 0) {
+              onPress={async () => {
+                const items = notifications?.items ?? [];
+                if (items.length === 0) {
                   Alert.alert('Bildirimler', 'Henüz yeni bir bildirim yok.');
                   return;
                 }
-                const lines = recent
-                  .slice(0, 5)
-                  .map((t) => `${t.senderName} · ${new Date(t.at).toLocaleString('tr-TR')}`)
-                  .join('\n');
-                Alert.alert('Son dokunuşlar', lines);
+                const lines = items
+                  .slice(0, 8)
+                  .map((n) => `${n.title}${n.body ? `\n${n.body}` : ''} · ${new Date(n.at).toLocaleString('tr-TR')}`)
+                  .join('\n\n');
+                Alert.alert('Son bildirimler', lines);
+                // Görüldü sayılsın: rozeti temizle.
+                if ((notifications?.unreadCount ?? 0) > 0) {
+                  try {
+                    await api.post('/notifications/read-all', {});
+                    setNotifications((prev) => (prev ? { ...prev, unreadCount: 0 } : prev));
+                  } catch {
+                    // best-effort: rozet bir sonraki yenilemede zaten güncellenir
+                  }
+                }
               }}
             >
               <Icon name="bell-outline" size={22} color={colors.cardForeground} />
+              {Boolean(notifications?.unreadCount) && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>
+                    {notifications!.unreadCount > 9 ? '9+' : notifications!.unreadCount}
+                  </Text>
+                </View>
+              )}
             </Pressable>
           </View>
 
@@ -556,6 +575,26 @@ const styles = StyleSheet.create({
     backgroundColor: alpha(colors.card, 0.72),
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderWidth: 1.5,
+    borderColor: colors.background,
+  },
+  notificationBadgeText: {
+    color: colors.primaryForeground,
+    fontFamily: fonts.body,
+    fontSize: 10,
+    fontWeight: '800',
   },
   radarCard: {
     marginTop: 27,

@@ -107,6 +107,22 @@ CREATE TABLE IF NOT EXISTS savings_contributions (
   note TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Partnerin yaptığı anlamlı değişikliklerin (ruh hali, anı, plan, birikim,
+-- günün sorusu, buluşma planı, dokunuş) uygulama içi bildirim akışı. Push
+-- bildirimi ayrıca gönderilir (bkz. notify.ts) ama bu tablo, uygulama
+-- açıkken/geçmişe bakarken görülecek kalıcı listeyi tutar.
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  couple_id TEXT NOT NULL REFERENCES couples(id),
+  recipient_id TEXT NOT NULL REFERENCES users(id),
+  actor_id TEXT NOT NULL REFERENCES users(id),
+  type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  read_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
 
 // Lightweight migration for databases created before Google sign-in /
@@ -135,6 +151,7 @@ ensureColumn('users', 'location_updated_at', 'location_updated_at TEXT');
 ensureColumn('users', 'push_token', 'push_token TEXT');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL;');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_id ON users(facebook_id) WHERE facebook_id IS NOT NULL;');
+db.exec('CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_id, created_at DESC);');
 
 const questionCount = (db.prepare('SELECT COUNT(*) as c FROM questions_bank').get() as { c: number }).c;
 if (questionCount === 0) {

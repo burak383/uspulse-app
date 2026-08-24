@@ -139,9 +139,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Uygulama açıkken partnerinden bir "dokunuş" bildirimi gelirse titret.
   useEffect(() => {
     const sub = Notifications.addNotificationReceivedListener((notification) => {
+      if (!hapticsEnabled) return;
       const data = notification.request.content.data as { type?: string } | undefined;
-      if (data?.type === 'touch' && hapticsEnabled) {
+      // "Kalbimi Gönder" (touch) en güçlü/en anlamlı olay -- tam titreşim.
+      // Diğer partner değişiklikleri (ruh hali, anı, plan, birikim, günün
+      // sorusu, buluşma planı) için daha hafif bir dokunuş yeterli.
+      if (data?.type === 'touch') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      } else if (data?.type) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       }
     });
     return () => sub.remove();

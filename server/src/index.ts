@@ -12,6 +12,7 @@ import memoriesRouter from './routes/memories';
 import questionsRouter from './routes/questions';
 import plansRouter from './routes/plans';
 import savingsRouter from './routes/savings';
+import notificationsRouter from './routes/notifications';
 
 const app = express();
 app.use(cors());
@@ -36,6 +37,7 @@ app.use('/api/memories', memoriesRouter);
 app.use('/api/questions', questionsRouter);
 app.use('/api/plans', plansRouter);
 app.use('/api/savings', savingsRouter);
+app.use('/api/notifications', notificationsRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: `Bulunamadı: ${req.method} ${req.path}` });

@@ -2,6 +2,16 @@ import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
 import { newId } from '../util';
+import { notifyPartner } from '../notify';
+
+const TYPE_LABELS: Record<string, string> = {
+  photo: 'bir fotoğraf',
+  video: 'bir video',
+  audio: 'bir ses notu',
+  drawing: 'bir çizim',
+  note: 'bir not',
+  capsule: 'bir zaman kapsülü',
+};
 
 const router = Router();
 router.use(requireAuth, requireCouple);
@@ -31,6 +41,14 @@ router.post('/', (req, res) => {
   ).run(id, req.user!.coupleId, req.user!.id, type, title, note ?? null, mediaUrl ?? null, unlockAt ?? null);
   const row = db.prepare('SELECT * FROM memories WHERE id = ?').get(id);
   res.status(201).json(row);
+
+  notifyPartner({
+    coupleId: req.user!.coupleId!,
+    actorId: req.user!.id,
+    type: 'memory',
+    title: `${req.user!.name} yeni bir anı ekledi`,
+    body: `${TYPE_LABELS[type] ?? 'Yeni bir anı'}: "${title}"`,
+  });
 });
 
 router.patch('/:id', (req, res) => {

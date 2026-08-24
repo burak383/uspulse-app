@@ -2,6 +2,7 @@ import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
 import { newId, today } from '../util';
+import { notifyPartner } from '../notify';
 
 const router = Router();
 router.use(requireAuth, requireCouple);
@@ -70,6 +71,18 @@ router.post('/today/answer', (req, res) => {
   }
 
   res.status(201).json({ day, text: String(text).trim() });
+
+  // "Anlamlı" olay: günün sorusunu ilk kez yanıtlamak. Sonradan cevabı
+  // düzenlemek partnere tekrar bildirim göndermez.
+  if (!existing) {
+    notifyPartner({
+      coupleId: me.coupleId!,
+      actorId: me.id,
+      type: 'question_answer',
+      title: `${me.name} bugünün sorusunu yanıtladı`,
+      body: 'Cevabını görmek için uygulamayı aç 💬',
+    });
+  }
 });
 
 export default router;

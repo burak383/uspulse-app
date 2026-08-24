@@ -2,6 +2,7 @@ import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
 import { newId } from '../util';
+import { notifyPartner } from '../notify';
 
 const router = Router();
 router.use(requireAuth, requireCouple);
@@ -15,6 +16,14 @@ router.post('/', (req, res) => {
   }
   db.prepare('INSERT INTO moods (id, user_id, mood) VALUES (?, ?, ?)').run(newId(), req.user!.id, mood);
   res.status(201).json({ mood, at: new Date().toISOString() });
+
+  notifyPartner({
+    coupleId: req.user!.coupleId!,
+    actorId: req.user!.id,
+    type: 'mood',
+    title: `${req.user!.name} ruh halini güncelledi`,
+    body: `Şimdi "${mood}" hissediyor.`,
+  });
 });
 
 router.get('/', (req, res) => {

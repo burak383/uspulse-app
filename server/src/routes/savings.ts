@@ -2,6 +2,7 @@ import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
 import { newId } from '../util';
+import { notifyPartner } from '../notify';
 
 const router = Router();
 router.use(requireAuth, requireCouple);
@@ -41,6 +42,14 @@ router.post('/', (req, res) => {
   ).run(id, req.user!.coupleId, title, Number(targetAmount), note ?? null);
   const row = db.prepare('SELECT * FROM savings_goals WHERE id = ?').get(id);
   res.status(201).json(serializeGoal(row));
+
+  notifyPartner({
+    coupleId: req.user!.coupleId!,
+    actorId: req.user!.id,
+    type: 'savings_goal',
+    title: `${req.user!.name} yeni bir birikim hedefi oluşturdu`,
+    body: `"${title}" 💰`,
+  });
 });
 
 router.post('/:id/contribute', (req, res) => {
@@ -58,6 +67,14 @@ router.post('/:id/contribute', (req, res) => {
   ).run(newId(), goal.id, req.user!.id, Number(amount), note ?? null);
 
   res.status(201).json(serializeGoal(goal));
+
+  notifyPartner({
+    coupleId: req.user!.coupleId!,
+    actorId: req.user!.id,
+    type: 'savings_contribution',
+    title: `${req.user!.name} birikime katkı yaptı`,
+    body: `"${goal.title}" hedefine ${Number(amount)} eklendi 💰`,
+  });
 });
 
 router.patch('/:id', (req, res) => {

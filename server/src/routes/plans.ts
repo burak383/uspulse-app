@@ -2,6 +2,7 @@ import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
 import { newId } from '../util';
+import { notifyPartner } from '../notify';
 
 const router = Router();
 router.use(requireAuth, requireCouple);
@@ -40,6 +41,14 @@ router.post('/', (req, res) => {
   ).run(id, req.user!.coupleId, category, title, subtitle ?? null, req.user!.id);
   const row = db.prepare('SELECT * FROM plan_items WHERE id = ?').get(id);
   res.status(201).json(row);
+
+  notifyPartner({
+    coupleId: req.user!.coupleId!,
+    actorId: req.user!.id,
+    type: 'plan_add',
+    title: `${req.user!.name} plana bir şey ekledi`,
+    body: `"${title}" plana eklendi.`,
+  });
 });
 
 router.patch('/:id', (req, res) => {
@@ -71,7 +80,21 @@ router.patch('/:id', (req, res) => {
     category === undefined ? null : category,
     row.id,
   );
-  res.json(db.prepare('SELECT * FROM plan_items WHERE id = ?').get(row.id));
+  const updated: any = db.prepare('SELECT * FROM plan_items WHERE id = ?').get(row.id);
+  res.json(updated);
+
+  // "Anlamlı" olay: bir plan tamamlandığında partnere haber ver. Sadece
+  // düzenleme (başlık/alt başlık) veya tamamlanmayı geri alma bildirim
+  // göndermez -- gereksiz bildirim kirliliğini önler.
+  if (done === true && !row.done) {
+    notifyPartner({
+      coupleId: req.user!.coupleId!,
+      actorId: req.user!.id,
+      type: 'plan_done',
+      title: `${req.user!.name} bir planı tamamladı`,
+      body: `"${updated.title}" ✅`,
+    });
+  }
 });
 
 router.delete('/:id', (req, res) => {

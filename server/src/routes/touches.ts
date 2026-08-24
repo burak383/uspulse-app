@@ -2,7 +2,7 @@ import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
 import { newId } from '../util';
-import { sendPushNotification } from '../push';
+import { notifyPartner } from '../notify';
 
 const router = Router();
 router.use(requireAuth, requireCouple);
@@ -20,18 +20,15 @@ router.post('/', (req, res) => {
   res.status(201).json(row);
 
   // Partnerin telefonunu o anda titret -- yanıtı bu yüzden burada, önce
-  // gönderiyoruz; push gönderimi yavaş ya da başarısız olsa bile isteği
-  // beklemesin/başarısız etmesin (bkz. push.ts).
-  const partner: any = db
-    .prepare('SELECT push_token FROM users WHERE couple_id = ? AND id != ?')
-    .get(req.user!.coupleId, req.user!.id);
-  if (partner?.push_token) {
-    sendPushNotification(partner.push_token, {
-      title: `${req.user!.name} sana bir kalp gönderdi 💗`,
-      body: 'Uzaklığı bir anlığına kapatın -- dokun ve hisset.',
-      data: { type: 'touch' },
-    });
-  }
+  // gönderiyoruz; bildirim gönderimi yavaş ya da başarısız olsa bile isteği
+  // beklemesin/başarısız etmesin (bkz. notify.ts).
+  notifyPartner({
+    coupleId: req.user!.coupleId!,
+    actorId: req.user!.id,
+    type: 'touch',
+    title: `${req.user!.name} sana bir kalp gönderdi 💗`,
+    body: 'Uzaklığı bir anlığına kapatın -- dokun ve hisset.',
+  });
 });
 
 router.get('/', (req, res) => {

@@ -104,3 +104,29 @@ export interface SavingsGoal {
   progress: number;
   contributions: SavingsContribution[];
 }
+
+export type NotificationType =
+  | 'touch'
+  | 'mood'
+  | 'memory'
+  | 'plan_add'
+  | 'plan_done'
+  | 'savings_goal'
+  | 'savings_contribution'
+  | 'question_answer'
+  | 'reunion_update';
+
+export interface NotificationItem {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body: string | null;
+  readAt: string | null;
+  at: string;
+  actorName: string;
+}
+
+export interface NotificationsResponse {
+  items: NotificationItem[];
+  unreadCount: number;
+}
