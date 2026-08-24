@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';
@@ -103,7 +104,7 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function HomeScreen({ navigation }: { navigation: NavProp }) {
   const { width } = useWindowDimensions();
-  const { user, partner, couple } = useAuth();
+  const { user, partner, couple, hapticsEnabled } = useAuth();
 
   const [mood, setMood] = useState<MoodResponse | null>(null);
   const [touches, setTouches] = useState<TouchesResponse | null>(null);
@@ -141,11 +142,20 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
   };
 
   const sendHeart = async () => {
+    // Kendi telefonunda anlık dokunsal geri bildirim: bastığın anda hissedilsin,
+    // sunucu yanıtını beklemesin. Partnerin telefonundaki gerçek titreşim ise
+    // push bildirimiyle gelir (bkz. AuthContext'teki bildirim dinleyicisi).
+    if (hapticsEnabled) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    }
     setSendingHeart(true);
     try {
       await api.post('/touches', { durationMs: 2000 });
       const touchesRes = await api.get<TouchesResponse>('/touches');
       setTouches(touchesRes);
+      if (hapticsEnabled) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
     } finally {
       setSendingHeart(false);
     }

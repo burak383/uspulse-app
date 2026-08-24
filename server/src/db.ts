@@ -130,6 +130,9 @@ ensureColumn('users', 'reset_code_expires', 'reset_code_expires TEXT');
 ensureColumn('users', 'lat', 'lat REAL');
 ensureColumn('users', 'lng', 'lng REAL');
 ensureColumn('users', 'location_updated_at', 'location_updated_at TEXT');
+// Partnerin telefonuna gerçek zamanlı "dokunuş" bildirimi (ve titreşim)
+// gönderebilmek için Expo push jetonu -- bkz. routes/touches.ts.
+ensureColumn('users', 'push_token', 'push_token TEXT');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL;');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_id ON users(facebook_id) WHERE facebook_id IS NOT NULL;');
 

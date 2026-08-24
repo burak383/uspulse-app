@@ -156,10 +156,22 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     locationSubmitting,
     shareLocationNow,
     stopSharingLocation,
+    hapticsEnabled,
+    setHapticsEnabled,
   } = useAuth();
   const [touches, setTouches] = useState<TouchesResponse | null>(null);
   const [lockedMemories, setLockedMemories] = useState(0);
   const [deleting, setDeleting] = useState(false);
+  const [hapticsSubmitting, setHapticsSubmitting] = useState(false);
+
+  const toggleHaptics = () => {
+    setHapticsSubmitting(true);
+    setHapticsEnabled(!hapticsEnabled)
+      .catch(() => {
+        Alert.alert('Değiştirilemedi', 'Lütfen tekrar dene.');
+      })
+      .finally(() => setHapticsSubmitting(false));
+  };
 
   const toggleLocationSharing = () => {
     if (locationSharedByMe) {
@@ -411,7 +423,15 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
             />
             <PrivacyRow icon="creation" label="Ruh hâli" color={colors.accent} value="Paylaşılıyor" />
             <PrivacyRow icon="widgets-outline" label="Widget görünümü" color={colors.primary} value="Açık" />
-            <PrivacyRow icon="vibrate" label="Haptik dokunuşlar" color={colors.primary} value="Açık" />
+            <PrivacyRow
+              icon="vibrate"
+              label="Haptik dokunuşlar"
+              color={colors.primary}
+              value={hapticsEnabled ? 'Açık' : 'Kapalı'}
+              active={hapticsEnabled}
+              loading={hapticsSubmitting}
+              onPress={toggleHaptics}
+            />
           </View>
         </View>
 

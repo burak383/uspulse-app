@@ -88,6 +88,22 @@ router.delete('/location', requireAuth, (req, res) => {
   res.status(204).end();
 });
 
+// Bu cihazın Expo push jetonunu kaydeder ki partnerin "Kalbimi Gönder"e
+// bastığında bu cihaza gerçek zamanlı bir bildirim (ve titreşim) gidebilsin.
+router.put('/push-token', requireAuth, (req, res) => {
+  const { token } = req.body ?? {};
+  if (!token || typeof token !== 'string' || !token.startsWith('ExponentPushToken')) {
+    return res.status(400).json({ error: 'Geçerli bir Expo push jetonu gerekli.' });
+  }
+  db.prepare('UPDATE users SET push_token = ? WHERE id = ?').run(token, req.user!.id);
+  res.status(204).end();
+});
+
+router.delete('/push-token', requireAuth, (req, res) => {
+  db.prepare('UPDATE users SET push_token = NULL WHERE id = ?').run(req.user!.id);
+  res.status(204).end();
+});
+
 // Hesap ve tüm kişisel verilerin silinmesi (KVKK/GDPR ve Facebook'un "User
 // Data Deletion" gereksinimi için gerekli): kullanıcının kendi yazdığı
 // ruh hali, dokunuş, anı, günün sorusu cevabı ve plan/birikim katkılarını,

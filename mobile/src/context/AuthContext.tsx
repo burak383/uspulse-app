@@ -4,6 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
+import * as Haptics from 'expo-haptics';
+import Constants from 'expo-constants';
 import { api, ApiError, setAuthToken } from '../api/client';
 import { AuthResponse, Couple, ForgotPasswordResponse, MeResponse, PublicUser } from '../api/types';
 
@@ -11,8 +14,20 @@ const TOKEN_KEY = 'uspulse_token';
 // expo-secure-store keys can only contain word characters, '.', '-'.
 const BIOMETRIC_TOKEN_KEY = 'uspulse-biometric-token';
 const BIOMETRIC_FLAG_KEY = 'uspulse_biometric_enabled';
+const HAPTICS_FLAG_KEY = 'uspulse_haptics_enabled';
 
 type Status = 'loading' | 'signedOut' | 'signedIn';
+
+// Uygulama açıkken bir "dokunuş" bildirimi gelirse bunu göster (ve titret) --
+// bu ayarlanmazsa Expo, ön plandaki bildirimleri varsayılan olarak sessizce yutar.
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 function labelForBiometricTypes(types: LocalAuthentication.AuthenticationType[]): string {
   if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
@@ -59,6 +74,10 @@ interface AuthContextValue {
   locationSubmitting: boolean;
   shareLocationNow: () => Promise<void>;
   stopSharingLocation: () => Promise<void>;
+  // "Kalbimi Gönder" titreşimi: kendi cihazında anlık geri bildirim VE
+  // partnerin "dokunuşu" gerçek zamanlı bildirimle aldığında titreşim.
+  hapticsEnabled: boolean;
+  setHapticsEnabled: (next: boolean) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -76,24 +95,57 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [locationSharedByMe, setLocationSharedByMe] = useState(false);
   const [locationSharedByPartner, setLocationSharedByPartner] = useState(false);
   const [locationSubmitting, setLocationSubmitting] = useState(false);
+  const [hapticsEnabled, setHapticsEnabledState] = useState(true);
 
   useEffect(() => {
     (async () => {
       try {
-        const [hasHardware, isEnrolled, types, enabledFlag] = await Promise.all([
+        const [hasHardware, isEnrolled, types, enabledFlag, hapticsFlag] = await Promise.all([
           LocalAuthentication.hasHardwareAsync(),
           LocalAuthentication.isEnrolledAsync(),
           LocalAuthentication.supportedAuthenticationTypesAsync(),
           AsyncStorage.getItem(BIOMETRIC_FLAG_KEY),
+          AsyncStorage.getItem(HAPTICS_FLAG_KEY),
         ]);
         setBiometricHardwareReady(hasHardware && isEnrolled);
         setBiometricLabel(labelForBiometricTypes(types));
         setBiometricEnabled(enabledFlag === '1');
+        // varsayılan açık: kayıtlı bir tercih yoksa (ilk açılış) titreşim açık kalır.
+        setHapticsEnabledState(hapticsFlag !== '0');
       } catch {
         // biometrics simply won't be offered
       }
     })();
   }, []);
+
+  // Android'de arka plandaki/uygulama kapalıyken gelen bir bildirimin
+  // gerçekten titreşmesi için önce bir bildirim kanalı tanımlanmış olmalı.
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('touches', {
+        name: 'Dokunuşlar',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 150, 250],
+        lightColor: '#FF8F82',
+      }).catch(() => {});
+    }
+  }, []);
+
+  const setHapticsEnabled = useCallback(async (next: boolean) => {
+    setHapticsEnabledState(next);
+    await AsyncStorage.setItem(HAPTICS_FLAG_KEY, next ? '1' : '0');
+  }, []);
+
+  // Uygulama açıkken partnerinden bir "dokunuş" bildirimi gelirse titret.
+  useEffect(() => {
+    const sub = Notifications.addNotificationReceivedListener((notification) => {
+      const data = notification.request.content.data as { type?: string } | undefined;
+      if (data?.type === 'touch' && hapticsEnabled) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, [hapticsEnabled]);
 
   const applyMe = useCallback((me: MeResponse) => {
     setUser(me.user);
@@ -126,15 +178,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Bildirim izni varsa/istenebiliyorsa bir Expo push jetonu alıp sunucuya
+  // kaydeder ki partnerin "Kalbimi Gönder"i bu cihazı gerçekten titretebilsin.
+  // Aynı shareLocationBestEffort gibi tamamen sessiz: izin yok, EAS projesine
+  // henüz bağlanmamış (bkz. app.json) ya da Expo Go'da Android push
+  // desteklenmiyor (SDK 53+) gibi durumlarda görünmez şekilde vazgeçer.
+  const registerPushTokenBestEffort = useCallback(async () => {
+    try {
+      const current = await Notifications.getPermissionsAsync();
+      let granted = current.granted;
+      if (!granted && current.canAskAgain) {
+        const requested = await Notifications.requestPermissionsAsync();
+        granted = requested.granted;
+      }
+      if (!granted) return;
+      const projectId =
+        (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ??
+        Constants.easConfig?.projectId;
+      if (!projectId) return;
+      const tokenResponse = await Notifications.getExpoPushTokenAsync({ projectId });
+      await api.put('/me/push-token', { token: tokenResponse.data });
+    } catch {
+      // push jetonu alınamadı: sessizce geç
+    }
+  }, []);
+
   const refresh = useCallback(async () => {
     try {
       const me = await api.get<MeResponse>('/me');
       applyMe(me);
       setStatus('signedIn');
-      // Sadece eşleşmiş kullanıcılar için anlamlı (mesafe hesaplamak üzere) --
-      // eşleşmemiş bir hesaba konum izni sormanın bir faydası yok.
+      // Sadece eşleşmiş kullanıcılar için anlamlı (mesafe hesaplamak / dokunuş
+      // bildirimi göndermek üzere) -- eşleşmemiş bir hesaba konum/bildirim
+      // izni sormanın bir faydası yok.
       if (me.user.coupleId) {
         shareLocationBestEffort();
+        registerPushTokenBestEffort();
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -149,7 +228,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setStatus('signedOut');
       }
     }
-  }, [applyMe, shareLocationBestEffort]);
+  }, [applyMe, shareLocationBestEffort, registerPushTokenBestEffort]);
 
   const shareLocationNow = useCallback(async () => {
     setError(null);
@@ -312,6 +391,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const logout = useCallback(async () => {
+    // Bu cihaz artık bildirim almamalı -- jetonu silmeyi dene (auth başlığı
+    // hâlâ geçerliyken, token'ı temizlemeden önce). Başarısız olursa önemli
+    // değil, çıkışı engellemesin.
+    await api.delete('/me/push-token').catch(() => {});
     await AsyncStorage.removeItem(TOKEN_KEY);
     setAuthToken(null);
     setUser(null);
@@ -426,6 +509,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       locationSubmitting,
       shareLocationNow,
       stopSharingLocation,
+      hapticsEnabled,
+      setHapticsEnabled,
     }),
     [
       status,
@@ -456,6 +541,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       locationSubmitting,
       shareLocationNow,
       stopSharingLocation,
+      hapticsEnabled,
+      setHapticsEnabled,
     ],
   );
 

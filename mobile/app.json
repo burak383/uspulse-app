@@ -42,6 +42,13 @@
         {
           "locationWhenInUsePermission": "Partnerinle aranızdaki yaklaşık mesafeyi hesaplayabilmek için konumun kullanılır. Kesin konumun asla partnerine gösterilmez, sadece aradaki mesafe paylaşılır."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#FF8F82"
+        }
       ]
     ]
   }
