@@ -59,6 +59,14 @@
           "icon": "./assets/notification-icon.png",
           "color": "#FF8F82"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Profil fotoğrafı seçebilmek için fotoğraflarına erişim izni gerekir.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
       ]
     ]
   }

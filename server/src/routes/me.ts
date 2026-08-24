@@ -104,6 +104,31 @@ router.delete('/push-token', requireAuth, (req, res) => {
   res.status(204).end();
 });
 
+// Profil fotoğrafı: Render'da kalıcı dosya sistemi olmadığı için (bkz.
+// index.ts'teki AUTO_SEED açıklaması) ayrı bir dosya depolama servisi
+// kurmak yerine, mobil tarafta küçültülüp (512x512) sıkıştırılmış JPEG'i
+// doğrudan base64 data URI olarak users.avatar_url'e yazıyoruz -- diğer
+// tüm kullanıcı verisiyle aynı kalıcılık garantisine sahip, ekstra servis/
+// API anahtarı gerekmiyor.
+const MAX_AVATAR_BASE64_LENGTH = 2_800_000; // ~2MB base64 (~1.5MB ham veri) -- 512x512 bir JPEG için bolca yeterli.
+
+router.put('/avatar', requireAuth, (req, res) => {
+  const { image } = req.body ?? {};
+  if (typeof image !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/.test(image)) {
+    return res.status(400).json({ error: 'Geçerli bir resim (data:image/...;base64,...) gerekli.' });
+  }
+  if (image.length > MAX_AVATAR_BASE64_LENGTH) {
+    return res.status(413).json({ error: 'Fotoğraf çok büyük. Daha küçük bir fotoğraf dene.' });
+  }
+  db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(image, req.user!.id);
+  res.status(204).end();
+});
+
+router.delete('/avatar', requireAuth, (req, res) => {
+  db.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?').run(req.user!.id);
+  res.status(204).end();
+});
+
 // Hesap ve tüm kişisel verilerin silinmesi (KVKK/GDPR ve Facebook'un "User
 // Data Deletion" gereksinimi için gerekli): kullanıcının kendi yazdığı
 // ruh hali, dokunuş, anı, günün sorusu cevabı ve plan/birikim katkılarını,

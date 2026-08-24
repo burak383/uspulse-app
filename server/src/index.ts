@@ -16,7 +16,10 @@ import notificationsRouter from './routes/notifications';
 
 const app = express();
 app.use(cors());
-app.use(express.json());
+// Varsayılan 100kb sınırı profil fotoğrafı (base64) yüklemeleri için yetersiz
+// -- sıkıştırılmış/512x512'ye küçültülmüş bir JPEG'in base64 hâli genelde
+// birkaç yüz KB'a kadar çıkabiliyor. bkz. routes/me.ts PUT /avatar.
+app.use(express.json({ limit: '3mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, name: 'uspulse-server', time: new Date().toISOString() });

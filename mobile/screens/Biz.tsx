@@ -14,6 +14,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';
@@ -160,6 +162,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     backgroundLocationEnabled,
     hapticsEnabled,
     setHapticsEnabled,
+    refresh,
   } = useAuth();
   const [touches, setTouches] = useState<TouchesResponse | null>(null);
   const [lockedMemories, setLockedMemories] = useState(0);
@@ -167,6 +170,68 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
   const [hapticsSubmitting, setHapticsSubmitting] = useState(false);
   const [mood, setMood] = useState<MoodResponse | null>(null);
   const [moodSubmitting, setMoodSubmitting] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+
+  const pickAndUploadAvatar = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(
+          'Fotoğraf izni gerekli',
+          'Profil fotoğrafı seçebilmek için Ayarlar\'dan UsPulse\'a fotoğraf erişimi vermelisin.',
+        );
+        return;
+      }
+      const picked = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (picked.canceled || !picked.assets?.[0]) return;
+
+      setAvatarUploading(true);
+      // 512x512'ye küçült + sıkıştır: telefon kamerasından gelen orijinal
+      // fotoğraf birkaç MB olabilir, avatar için buna hiç gerek yok --
+      // hem yükleme hızlı olsun hem de sunucudaki (SQLite) kayıt küçük kalsın.
+      const manipulated = await ImageManipulator.manipulateAsync(
+        picked.assets[0].uri,
+        [{ resize: { width: 512, height: 512 } }],
+        { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true },
+      );
+      if (!manipulated.base64) {
+        throw new Error('Fotoğraf işlenemedi.');
+      }
+      await api.put('/me/avatar', { image: `data:image/jpeg;base64,${manipulated.base64}` });
+      await refresh();
+    } catch (e) {
+      Alert.alert('Fotoğraf yüklenemedi', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
+
+  const removeAvatar = () => {
+    setAvatarUploading(true);
+    api
+      .delete('/me/avatar')
+      .then(() => refresh())
+      .catch(() => {
+        Alert.alert('Kaldırılamadı', 'Lütfen tekrar dene.');
+      })
+      .finally(() => setAvatarUploading(false));
+  };
+
+  const onAvatarPress = () => {
+    const options: { text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }[] = [
+      { text: 'Fotoğraf seç', onPress: pickAndUploadAvatar },
+    ];
+    if (user?.avatarUrl) {
+      options.push({ text: 'Fotoğrafı kaldır', style: 'destructive', onPress: removeAvatar });
+    }
+    options.push({ text: 'Vazgeç', style: 'cancel' });
+    Alert.alert('Profil fotoğrafı', undefined, options);
+  };
 
   const toggleHaptics = () => {
     setHapticsSubmitting(true);
@@ -297,11 +362,29 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
 
           <View style={styles.relationshipCard}>
             <View style={styles.avatarStack}>
-              <View style={[styles.avatar, styles.elifAvatar]}>
-                <Icon name="account" size={32} color={colors.mutedForeground} />
-              </View>
+              <Pressable
+                accessibilityLabel="Profil fotoğrafını değiştir"
+                style={[styles.avatar, styles.elifAvatar]}
+                onPress={onAvatarPress}
+                disabled={avatarUploading}
+              >
+                {avatarUploading ? (
+                  <ActivityIndicator color={colors.mutedForeground} />
+                ) : user?.avatarUrl ? (
+                  <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
+                ) : (
+                  <Icon name="account" size={32} color={colors.mutedForeground} />
+                )}
+                <View style={styles.avatarEditBadge}>
+                  <Icon name="camera" size={13} color={colors.primaryForeground} />
+                </View>
+              </Pressable>
               <View style={[styles.avatar, styles.denizAvatar]}>
-                <Icon name="account" size={32} color={colors.mutedForeground} />
+                {partner?.avatarUrl ? (
+                  <Image source={{ uri: partner.avatarUrl }} style={styles.avatarImage} />
+                ) : (
+                  <Icon name="account" size={32} color={colors.mutedForeground} />
+                )}
               </View>
               <View style={styles.heartBadge}>
                 <Icon name="hand-heart" size={20} color={colors.primaryForeground} />
@@ -605,6 +688,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.input,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 35,
+  },
+  avatarEditBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.card,
   },
   elifAvatar: {
     left: 0,
