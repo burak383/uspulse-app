@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import { seedDemoData } from './seed';
+import legalRouter from './routes/legal';
 import authRouter from './routes/auth';
 import meRouter from './routes/me';
 import reunionRouter from './routes/reunion';
@@ -19,6 +20,12 @@ app.use(express.json());
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, name: 'uspulse-server', time: new Date().toISOString() });
 });
+
+// Facebook/Google uygulama incelemesi ve genel şeffaflık için: gizlilik
+// politikası, kullanım koşulları ve veri silme talimatları -- /api altında
+// değil, kök yolda (ör. https://.../privacy) çünkü bunlar API uçları değil,
+// insan tarafından okunacak sayfalar.
+app.use('/', legalRouter);
 
 app.use('/api/auth', authRouter);
 app.use('/api/me', meRouter);

@@ -1,5 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   SafeAreaView,
@@ -123,9 +125,32 @@ function daysSince(dateStr?: string | null) {
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function TogetherScreen({ navigation }: { navigation: NavProp }) {
-  const { user, partner, couple, logout } = useAuth();
+  const { user, partner, couple, logout, deleteAccount } = useAuth();
   const [touches, setTouches] = useState<TouchesResponse | null>(null);
   const [lockedMemories, setLockedMemories] = useState(0);
+  const [deleting, setDeleting] = useState(false);
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(
+      'Hesabını sil',
+      'Bu işlem geri alınamaz: hesabın, ruh hâli/dokunuş geçmişin, yazdığın anılar ve eklediğin plan/birikim katkıların kalıcı olarak silinir. Partnerinin hesabı etkilenmez.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Hesabımı sil',
+          style: 'destructive',
+          onPress: () => {
+            setDeleting(true);
+            deleteAccount()
+              .catch(() => {
+                Alert.alert('Hesap silinemedi', 'Lütfen tekrar dene.');
+              })
+              .finally(() => setDeleting(false));
+          },
+        },
+      ],
+    );
+  };
 
   const load = useCallback(async () => {
     try {
@@ -310,6 +335,21 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
         <Pressable style={styles.logoutCard} onPress={logout}>
           <RoundIcon name="logout" color={colors.destructive} backgroundColor={colors.destructive} size={19} />
           <Text style={styles.logoutText}>Çıkış yap</Text>
+        </Pressable>
+
+        <Pressable
+          style={[styles.logoutCard, deleting && styles.deleteCardDisabled]}
+          onPress={confirmDeleteAccount}
+          disabled={deleting}
+        >
+          {deleting ? (
+            <ActivityIndicator color={colors.destructive} />
+          ) : (
+            <>
+              <RoundIcon name="delete-outline" color={colors.destructive} backgroundColor={colors.destructive} size={19} />
+              <Text style={styles.logoutText}>Hesabımı sil</Text>
+            </>
+          )}
         </Pressable>
       </ScrollView>
 
@@ -645,7 +685,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     gap: 12,
+  },
+  deleteCardDisabled: {
+    opacity: 0.6,
   },
   logoutText: {
     color: colors.destructive,

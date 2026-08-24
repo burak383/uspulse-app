@@ -35,10 +35,12 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
+  loginWithFacebook: (accessToken: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<ForgotPasswordResponse>;
   resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
   pair: (code: string) => Promise<void>;
   logout: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
   refresh: () => Promise<void>;
   clearError: () => void;
   // Biyometrik (Face ID / parmak izi) hızlı giriş.
@@ -169,6 +171,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [handleAuthResponse, refresh],
   );
 
+  const loginWithFacebook = useCallback(
+    async (accessToken: string) => {
+      setError(null);
+      try {
+        const res = await api.post<AuthResponse>('/auth/facebook', { accessToken });
+        await handleAuthResponse(res);
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Facebook ile giriş başarısız oldu.');
+        throw e;
+      }
+    },
+    [handleAuthResponse, refresh],
+  );
+
   const forgotPassword = useCallback(async (email: string) => {
     setError(null);
     try {
@@ -218,6 +235,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Face ID / parmak izi kaydı bilerek silinmiyor: kullanıcı çıkış yapıp
     // aynı cihazdan tekrar açtığında yine biyometrik olarak girebilsin diye.
     // Tamamen kaldırmak isteyen disableBiometric() çağırabilir.
+  }, []);
+
+  const deleteAccount = useCallback(async () => {
+    setError(null);
+    try {
+      await api.delete('/me');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Hesap silinemedi.');
+      throw e;
+    }
+    // Hesap sunucuda silindi; cihazdaki oturum/biyometrik izleri de temizlenir.
+    await AsyncStorage.removeItem(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
+    await AsyncStorage.removeItem(BIOMETRIC_FLAG_KEY);
+    setAuthToken(null);
+    setUser(null);
+    setPartner(null);
+    setCouple(null);
+    setBiometricEnabled(false);
+    setStatus('signedOut');
   }, []);
 
   const enableBiometric = useCallback(async () => {
@@ -277,10 +314,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       register,
       loginWithGoogle,
+      loginWithFacebook,
       forgotPassword,
       resetPassword,
       pair,
       logout,
+      deleteAccount,
       refresh,
       clearError,
       biometricHardwareReady,
@@ -299,10 +338,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       register,
       loginWithGoogle,
+      loginWithFacebook,
       forgotPassword,
       resetPassword,
       pair,
       logout,
+      deleteAccount,
       refresh,
       clearError,
       biometricHardwareReady,
