@@ -23,6 +23,24 @@ const TYPES = ['photo', 'video', 'audio', 'drawing', 'note', 'capsule'];
 // Bu tipler gerçek bir medya dosyası (multipart/form-data, "media" alanı) gerektirir.
 const MEDIA_TYPES = ['photo', 'video', 'audio'];
 
+// "MÜHÜRLÜ" zaman kapsülleri gerçekten mühürlü olsun: açılma tarihi henüz
+// gelmediyse, kapsülü OLUŞTURAN kişi dışında kimse (yani partner) note/
+// media_url alanlarını göremez -- API'yi doğrudan çağırsa bile. Kapsülü
+// oluşturan kendi yazdığını her zaman görür/düzenleyebilir (bir sürpriz
+// kendinden saklanmaz, sadece partnerden saklanır).
+function isCapsuleLockedFor(row: any, viewerId: string): boolean {
+  if (row.type !== 'capsule' || !row.unlock_at || row.author_id === viewerId) return false;
+  const unlockTime = Date.parse(row.unlock_at);
+  return !Number.isNaN(unlockTime) && unlockTime > Date.now();
+}
+
+function decorateMemory(row: any, viewerId: string) {
+  if (isCapsuleLockedFor(row, viewerId)) {
+    return { ...row, note: null, media_url: null, locked: true };
+  }
+  return { ...row, locked: false };
+}
+
 router.get('/', (req, res) => {
   const rows = db
     .prepare(
@@ -30,8 +48,8 @@ router.get('/', (req, res) => {
        JOIN users u ON u.id = m.author_id
        WHERE m.couple_id = ? ORDER BY m.created_at DESC`,
     )
-    .all(req.user!.coupleId);
-  res.json(rows);
+    .all(req.user!.coupleId) as any[];
+  res.json(rows.map((row) => decorateMemory(row, req.user!.id)));
 });
 
 // multer'ı elle sarmalıyoruz ki dosya-boyutu gibi hataları (LIMIT_FILE_SIZE)
@@ -105,7 +123,7 @@ router.post('/', handleMediaUpload, (req, res) => {
     unlockAt || null,
   );
   const row = db.prepare('SELECT * FROM memories WHERE id = ?').get(id);
-  res.status(201).json(row);
+  res.status(201).json(decorateMemory(row, req.user!.id));
 
   notifyPartner({
     coupleId: req.user!.coupleId!,
@@ -117,13 +135,24 @@ router.post('/', handleMediaUpload, (req, res) => {
 });
 
 router.patch('/:id', (req, res) => {
-  const { title, note, unlockAt } = req.body ?? {};
+  const { title, unlockAt } = req.body ?? {};
+  let { note } = req.body ?? {};
   const row: any = db
     .prepare('SELECT * FROM memories WHERE id = ? AND couple_id = ?')
     .get(req.params.id, req.user!.coupleId);
   if (!row) return res.status(404).json({ error: 'Bulunamadı.' });
   if (title !== undefined && !String(title).trim()) {
     return res.status(400).json({ error: 'title boş olamaz.' });
+  }
+
+  // Kapsül henüz kilitliyse (bkz. isCapsuleLockedFor) -- yani bu isteği yapan
+  // kişi kapsülü oluşturan değilse ve açılma tarihi gelmediyse -- gizli
+  // içeriği ne görebilir ne de üzerine yazabilir. İstek gövdesinde ne
+  // gönderilirse gönderilsin note güncellemesini yok sayıyoruz; yoksa
+  // mobil tarafta "görünmeyen" boş bir alanı kaydetmek gerçek içeriği
+  // sessizce silebilir.
+  if (isCapsuleLockedFor(row, req.user!.id)) {
+    note = undefined;
   }
 
   db.prepare(
@@ -140,7 +169,7 @@ router.patch('/:id', (req, res) => {
     unlockAt === undefined ? null : unlockAt || null,
     row.id,
   );
-  res.json(db.prepare('SELECT * FROM memories WHERE id = ?').get(row.id));
+  res.json(decorateMemory(db.prepare('SELECT * FROM memories WHERE id = ?').get(row.id), req.user!.id));
 });
 
 router.delete('/:id', (req, res) => {

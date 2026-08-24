@@ -21,6 +21,25 @@ const GOOGLE_CLIENT_IDS = (process.env.GOOGLE_CLIENT_IDS || '')
 const FACEBOOK_APP_ID = (process.env.FACEBOOK_APP_ID || '').trim();
 const FACEBOOK_APP_SECRET = (process.env.FACEBOOK_APP_SECRET || '').trim();
 
+// Şifre sıfırlama kodu 6 haneli (10^6 olasılık) ve 15 dakika geçerli, ama
+// deneme sayısını sınırlayan bir mekanizma olmazsa bu süre içinde sınırsız
+// tahmin denenebilir. Tek instance'lı bir Render dağıtımı için bellek içi
+// basit bir pencere-sayaç yeterli (Redis gibi ek bir servise gerek yok) --
+// süreç yeniden başlarsa sayaçlar sıfırlanır, bu güvenlik ağı için kabul
+// edilebilir bir sınırlama.
+const rateLimitWindows = new Map<string, { count: number; windowStart: number }>();
+
+function checkRateLimit(key: string, maxAttempts: number, windowMs: number): boolean {
+  const now = Date.now();
+  const entry = rateLimitWindows.get(key);
+  if (!entry || now - entry.windowStart > windowMs) {
+    rateLimitWindows.set(key, { count: 1, windowStart: now });
+    return true;
+  }
+  entry.count += 1;
+  return entry.count <= maxAttempts;
+}
+
 function publicUser(row: any) {
   return {
     id: row.id,
@@ -90,6 +109,13 @@ router.post('/forgot-password', (req, res) => {
     return res.status(400).json({ error: 'E-posta gerekli.' });
   }
   const normalizedEmail = String(email).toLowerCase().trim();
+
+  // Bir e-posta adresi için saatte en fazla 5 kod isteği -- sınırsız kod
+  // üretimini (log/gelecekteki SMS-e-posta sağlayıcı maliyeti) önler.
+  if (!checkRateLimit(`forgot:${normalizedEmail}`, 5, 60 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Çok fazla istek. Lütfen bir süre sonra tekrar dene.' });
+  }
+
   const row: any = db.prepare('SELECT id FROM users WHERE email = ?').get(normalizedEmail);
 
   // The status code and message are the same whether or not the account
@@ -133,6 +159,16 @@ router.post('/reset-password', (req, res) => {
     return res.status(400).json({ error: 'Şifre en az 6 karakter olmalı.' });
   }
   const normalizedEmail = String(email).toLowerCase().trim();
+
+  // 15 dakikalık pencerede e-posta başına en fazla 8 kod denemesi -- 6 haneli
+  // (10^6 olasılık) kodu brute-force ile bulma ihtimalini pratikte imkansız
+  // hale getirir.
+  if (!checkRateLimit(`reset:${normalizedEmail}`, 8, 15 * 60 * 1000)) {
+    return res
+      .status(429)
+      .json({ error: 'Çok fazla hatalı deneme. Lütfen bir süre sonra yeniden kod isteyip tekrar dene.' });
+  }
+
   const row: any = db.prepare('SELECT * FROM users WHERE email = ?').get(normalizedEmail);
   if (!row || !row.reset_code_hash || !row.reset_code_expires) {
     return res.status(400).json({ error: 'Geçersiz veya süresi dolmuş kod. Yeniden kod isteyin.' });

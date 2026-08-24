@@ -383,9 +383,15 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
     setSubmitting(true);
     try {
       if (editingMemory) {
+        // Kilitli bir kapsülü (henüz açılma tarihi gelmemiş, bizim
+        // eklemediğimiz) düzenlerken sunucu zaten note'u hiç göndermedi --
+        // bu yüzden burada boş kalan not alanını PATCH'e dahil ETMİYORUZ,
+        // yoksa "görünmeyen" gerçek içeriği sessizce boşla değiştirmiş
+        // oluruz. bkz. server/src/routes/memories.ts isCapsuleLockedFor.
+        const isLockedCapsule = editingMemory.type === 'capsule' && editingMemory.locked;
         await api.patch(`/memories/${editingMemory.id}`, {
           title: title.trim(),
-          note: note.trim() || null,
+          note: isLockedCapsule ? undefined : note.trim() || null,
           unlockAt: editingMemory.type === 'capsule' ? unlockAt.trim() || null : undefined,
         });
       } else if (kind === 'photo' || kind === 'video' || kind === 'audio') {
@@ -729,14 +735,23 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
               style={styles.modalInput}
               autoFocus={!editingMemory}
             />
-            <TextInput
-              value={note}
-              onChangeText={setNote}
-              placeholder="Bir not bırak (opsiyonel)"
-              placeholderTextColor={colors.mutedForeground}
-              style={[styles.modalInput, styles.modalTextArea]}
-              multiline
-            />
+            {editingMemory?.type === 'capsule' && editingMemory.locked ? (
+              <View style={styles.lockedNoteBox}>
+                <Icon name="lock" size={14} color={colors.accent} />
+                <Text style={styles.mutedSmall}>
+                  İçerik, açılma tarihine kadar gizli -- yalnızca ekleyen kişi görebilir.
+                </Text>
+              </View>
+            ) : (
+              <TextInput
+                value={note}
+                onChangeText={setNote}
+                placeholder="Bir not bırak (opsiyonel)"
+                placeholderTextColor={colors.mutedForeground}
+                style={[styles.modalInput, styles.modalTextArea]}
+                multiline
+              />
+            )}
 
             {(kind === 'capsule' || editingMemory?.type === 'capsule') && (
               <TextInput
@@ -1237,6 +1252,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+  },
+  lockedNoteBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: alpha(colors.accent, 0.1),
   },
   reRecordText: {
     color: colors.primary,

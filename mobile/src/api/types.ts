@@ -64,6 +64,13 @@ export interface Memory {
   media_url: string | null;
   unlock_at: string | null;
   created_at: string;
+  /**
+   * true ise: bu bir zaman kapsülü, açılma tarihi henüz gelmedi ve bu isteği
+   * yapan kişi kapsülü oluşturan değil -- note/media_url sunucu tarafında
+   * bilerek null olarak dönüyor (bkz. server/src/routes/memories.ts
+   * decorateMemory). Kapsülü oluşturan kişi kendi içeriğini her zaman görür.
+   */
+  locked: boolean;
 }
 
 export interface TodayQuestion {

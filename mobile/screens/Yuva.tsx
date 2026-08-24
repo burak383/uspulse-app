@@ -378,8 +378,8 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
                 onPress={() => goTab('Anilar')}
               />
               <ActionTile
-                icon="draw-pen"
-                label="Çizim"
+                icon="video-outline"
+                label="Video"
                 color={colors.accent}
                 onPress={() => goTab('Anilar')}
               />

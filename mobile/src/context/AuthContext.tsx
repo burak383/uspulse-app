@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -365,6 +365,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Kullanıcı bildirim iznini ilk seferde reddedip sonra Ayarlar'dan açarsa,
+  // uygulamayı yeniden başlatmadan push jetonu hiç kaydolmuyordu -- bu yüzden
+  // uygulama her ön plana döndüğünde de (yalnızca girişte/eşleşmede değil)
+  // tekrar deniyoruz. registerPushTokenBestEffort zaten tamamen sessiz/best-
+  // effort: izin hâlâ yoksa ya da EAS projesine bağlı değilse hiçbir şey yapmaz.
+  useEffect(() => {
+    if (status !== 'signedIn' || !user?.coupleId) return;
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        registerPushTokenBestEffort();
+      }
+    });
+    return () => subscription.remove();
+  }, [status, user?.coupleId, registerPushTokenBestEffort]);
 
   const handleAuthResponse = useCallback(async (res: AuthResponse) => {
     await AsyncStorage.setItem(TOKEN_KEY, res.token);

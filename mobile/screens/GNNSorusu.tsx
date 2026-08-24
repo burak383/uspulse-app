@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
+  Alert,
   Image,
   Pressable,
   SafeAreaView,
@@ -77,6 +78,11 @@ export default function DailyRitualScreen({ navigation }: { navigation: NavProp 
         return res;
       });
       setAnswer(res.myAnswer?.text ?? '');
+    } catch (e) {
+      Alert.alert(
+        'Günün sorusu yüklenemedi',
+        e instanceof Error ? e.message : 'Lütfen bağlantını kontrol edip tekrar dene.',
+      );
     } finally {
       setLoading(false);
     }
@@ -97,6 +103,11 @@ export default function DailyRitualScreen({ navigation }: { navigation: NavProp 
     try {
       await api.post('/questions/today/answer', { text: answer.trim() });
       await load();
+    } catch (e) {
+      Alert.alert(
+        'Gönderilemedi',
+        e instanceof Error ? e.message : 'Cevabın kaydedilemedi, lütfen tekrar dene.',
+      );
     } finally {
       setSending(false);
     }
@@ -114,6 +125,11 @@ export default function DailyRitualScreen({ navigation }: { navigation: NavProp 
         note: `${user?.name ?? 'Sen'}: "${data.myAnswer.text}"\n${data.partnerName ?? 'Partnerin'}: "${data.partnerAnswer.text}"`,
       });
       setSavedMemory(true);
+    } catch (e) {
+      Alert.alert(
+        'Kaydedilemedi',
+        e instanceof Error ? e.message : 'Anılara kaydedilemedi, lütfen tekrar dene.',
+      );
     } finally {
       setSavingMemory(false);
     }

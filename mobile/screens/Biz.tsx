@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';
@@ -337,6 +338,12 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     }
   };
 
+  const copyInviteCode = async () => {
+    if (!user?.inviteCode) return;
+    await Clipboard.setStringAsync(user.inviteCode);
+    Alert.alert('Kopyalandı', 'Davet kodun panoya kopyalandı.');
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView
@@ -473,7 +480,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
               <Text style={styles.bodyBold}>{user?.name ?? 'Senin'} eşleşme kodun</Text>
               <Text style={styles.caption}>{user?.inviteCode ?? '------'}</Text>
             </View>
-            <Pressable style={styles.copyButton} onPress={shareInvite}>
+            <Pressable accessibilityLabel="Davet kodunu kopyala" style={styles.copyButton} onPress={copyInviteCode}>
               <Icon name="content-copy" size={16} color={colors.primary} />
             </Pressable>
           </View>
