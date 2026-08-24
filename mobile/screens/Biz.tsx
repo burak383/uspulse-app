@@ -19,7 +19,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api/client';
-import { Memory, TouchesResponse } from '../src/api/types';
+import { Memory, MoodResponse, TouchesResponse } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 
 const colors = theme.colors;
@@ -165,6 +165,8 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
   const [lockedMemories, setLockedMemories] = useState(0);
   const [deleting, setDeleting] = useState(false);
   const [hapticsSubmitting, setHapticsSubmitting] = useState(false);
+  const [mood, setMood] = useState<MoodResponse | null>(null);
+  const [moodSubmitting, setMoodSubmitting] = useState(false);
 
   const toggleHaptics = () => {
     setHapticsSubmitting(true);
@@ -173,6 +175,20 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
         Alert.alert('Değiştirilemedi', 'Lütfen tekrar dene.');
       })
       .finally(() => setHapticsSubmitting(false));
+  };
+
+  const toggleMoodSharing = async () => {
+    if (!mood) return;
+    const next = !mood.sharedByMe;
+    setMoodSubmitting(true);
+    try {
+      await api.put('/mood/sharing', { shared: next });
+      setMood((prev) => (prev ? { ...prev, sharedByMe: next } : prev));
+    } catch {
+      Alert.alert('Değiştirilemedi', 'Lütfen tekrar dene.');
+    } finally {
+      setMoodSubmitting(false);
+    }
   };
 
   const toggleLocationSharing = () => {
@@ -224,12 +240,14 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
 
   const load = useCallback(async () => {
     try {
-      const [touchesRes, memoriesRes] = await Promise.all([
+      const [touchesRes, memoriesRes, moodRes] = await Promise.all([
         api.get<TouchesResponse>('/touches'),
         api.get<Memory[]>('/memories'),
+        api.get<MoodResponse>('/mood'),
       ]);
       setTouches(touchesRes);
       setLockedMemories(memoriesRes.filter((m) => m.type === 'capsule').length);
+      setMood(moodRes);
     } catch {
       // best-effort refresh
     }
@@ -445,8 +463,15 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
               loading={locationSubmitting}
               onPress={toggleLocationSharing}
             />
-            <PrivacyRow icon="creation" label="Ruh hâli" color={colors.accent} value="Paylaşılıyor" />
-            <PrivacyRow icon="widgets-outline" label="Widget görünümü" color={colors.primary} value="Açık" />
+            <PrivacyRow
+              icon="creation"
+              label="Ruh hâli"
+              color={colors.accent}
+              value={mood?.sharedByMe === false ? 'Kapalı' : 'Paylaşılıyor'}
+              active={mood?.sharedByMe !== false}
+              loading={moodSubmitting || !mood}
+              onPress={toggleMoodSharing}
+            />
             <PrivacyRow
               icon="vibrate"
               label="Haptik dokunuşlar"

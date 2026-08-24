@@ -16,6 +16,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Google from 'expo-auth-session/providers/google';
+import * as Facebook from 'expo-auth-session/providers/facebook';
 import * as WebBrowser from 'expo-web-browser';
 import { colors, fonts } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
@@ -29,14 +30,23 @@ const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_I
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || undefined;
 const GOOGLE_CONFIGURED = Boolean(GOOGLE_IOS_CLIENT_ID || GOOGLE_ANDROID_CLIENT_ID || GOOGLE_WEB_CLIENT_ID);
 
-// expo-auth-session's Google provider throws synchronously (crashing the
-// screen) if the client ID for the *current* platform isn't a non-empty
-// string, even before the user ever presses the button. Since real IDs are
-// optional (see handleGooglePress below, which is the actual "is this set
-// up" gate), every platform gets a harmless placeholder here so the hook
-// never sees `undefined` -- promptAsync() is never reached for a
-// placeholder because handleGooglePress short-circuits on GOOGLE_CONFIGURED.
+// Facebook için tek bir Uygulama Kimliği (App ID) yeterli -- Google'daki gibi
+// platform başına ayrı bir istemci kimliği yok, aynı App ID hem iOS hem
+// Android hem web için kullanılıyor (platform ayrımı Meta for Developers
+// tarafında, bundle id/paket adı olarak yapılıyor).
+const FACEBOOK_APP_ID = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID || undefined;
+const FACEBOOK_CONFIGURED = Boolean(FACEBOOK_APP_ID);
+
+// expo-auth-session'ın Google/Facebook sağlayıcıları, geçerli platform için
+// istemci kimliği boşsa -- kullanıcı butona hiç basmadan -- senkron olarak
+// hata fırlatıp ekranı çökertiyor. Gerçek kimlikler opsiyonel olduğu için
+// (asıl "bu ayarlandı mı" kontrolü handleGooglePress/handleFacebookPress
+// içinde), her platforma zararsız bir yer tutucu veriliyor ki hook hiçbir
+// zaman `undefined` görmesin -- yer tutucu için promptAsync() hiç
+// çağrılmıyor çünkü handleGooglePress/handleFacebookPress GOOGLE_CONFIGURED/
+// FACEBOOK_CONFIGURED kontrolünde durup buton basımını orada kesiyor.
 const GOOGLE_PLACEHOLDER_CLIENT_ID = 'not-configured.apps.googleusercontent.com';
+const FACEBOOK_PLACEHOLDER_CLIENT_ID = 'not-configured';
 
 // New screen (not part of the original FireVibe export): the design only
 // shipped a pairing screen (Eşleş / ELe.tsx), with no way to actually create
@@ -47,6 +57,7 @@ export default function AuthScreen() {
     login,
     register,
     loginWithGoogle,
+    loginWithFacebook,
     forgotPassword,
     resetPassword,
     error,
@@ -63,6 +74,7 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  const [facebookSubmitting, setFacebookSubmitting] = useState(false);
   const [biometricSubmitting, setBiometricSubmitting] = useState(false);
 
   const [forgotOpen, setForgotOpen] = useState(false);
@@ -81,6 +93,14 @@ export default function AuthScreen() {
     iosClientId: GOOGLE_IOS_CLIENT_ID || GOOGLE_PLACEHOLDER_CLIENT_ID,
     androidClientId: GOOGLE_ANDROID_CLIENT_ID || GOOGLE_PLACEHOLDER_CLIENT_ID,
     webClientId: GOOGLE_WEB_CLIENT_ID || GOOGLE_PLACEHOLDER_CLIENT_ID,
+  });
+
+  // Facebook akışı bize bir "access token" veriyor (Google'daki "id token"ın
+  // karşılığı); sunucu bunu Graph API'nin debug_token uç noktasıyla doğruluyor.
+  const [, facebookResponse, promptFacebookAsync] = Facebook.useAuthRequest({
+    iosClientId: FACEBOOK_APP_ID || FACEBOOK_PLACEHOLDER_CLIENT_ID,
+    androidClientId: FACEBOOK_APP_ID || FACEBOOK_PLACEHOLDER_CLIENT_ID,
+    webClientId: FACEBOOK_APP_ID || FACEBOOK_PLACEHOLDER_CLIENT_ID,
   });
 
   useEffect(() => {
@@ -102,6 +122,27 @@ export default function AuthScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [googleResponse]);
+
+  useEffect(() => {
+    if (facebookResponse?.type === 'success') {
+      const accessToken =
+        facebookResponse.authentication?.accessToken ??
+        (facebookResponse.params as { access_token?: string })?.access_token;
+      if (!accessToken) {
+        Alert.alert('Facebook ile giriş başarısız oldu.', 'Erişim jetonu alınamadı.');
+        return;
+      }
+      setFacebookSubmitting(true);
+      loginWithFacebook(accessToken)
+        .catch(() => {
+          // error is surfaced via context
+        })
+        .finally(() => setFacebookSubmitting(false));
+    } else if (facebookResponse?.type === 'error') {
+      Alert.alert('Facebook ile giriş başarısız oldu.', facebookResponse.error?.message);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facebookResponse]);
 
   const offerBiometricEnrollment = () => {
     if (!biometricHardwareReady || biometricEnabled) return;
@@ -151,6 +192,21 @@ export default function AuthScreen() {
       await promptGoogleAsync();
     } catch {
       Alert.alert('Google ile giriş başlatılamadı.');
+    }
+  };
+
+  const handleFacebookPress = async () => {
+    if (!FACEBOOK_CONFIGURED) {
+      Alert.alert(
+        'Facebook girişi ayarlanmadı',
+        "Bu özelliği açmak için Meta for Developers üzerinden bir uygulama oluşturup Uygulama Kimliği'ni mobile/.env dosyasına, Uygulama Kimliği + Gizli Anahtarı'nı da server/.env içindeki FACEBOOK_APP_ID / FACEBOOK_APP_SECRET değerlerine eklemeniz gerekir. Ayrıntılar için README'ye bakın.",
+      );
+      return;
+    }
+    try {
+      await promptFacebookAsync();
+    } catch {
+      Alert.alert('Facebook ile giriş başlatılamadı.');
     }
   };
 
@@ -339,6 +395,21 @@ export default function AuthScreen() {
                 <>
                   <MaterialCommunityIcons name="google" size={18} color={colors.foreground} />
                   <Text style={styles.altButtonText}>Google ile giriş yap</Text>
+                </>
+              )}
+            </Pressable>
+
+            <Pressable
+              style={[styles.altButton, facebookSubmitting && styles.submitButtonDisabled]}
+              onPress={handleFacebookPress}
+              disabled={facebookSubmitting}
+            >
+              {facebookSubmitting ? (
+                <ActivityIndicator color={colors.foreground} />
+              ) : (
+                <>
+                  <MaterialCommunityIcons name="facebook" size={18} color={colors.foreground} />
+                  <Text style={styles.altButtonText}>Facebook ile giriş yap</Text>
                 </>
               )}
             </Pressable>

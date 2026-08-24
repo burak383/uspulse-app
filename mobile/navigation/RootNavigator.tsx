@@ -12,7 +12,6 @@ import PlansScreen from '../screens/Planlar';
 import MemoriesScreen from '../screens/AnLar';
 import TogetherScreen from '../screens/Biz';
 import DailyQuestionScreen from '../screens/GNNSorusu';
-import LisbonWeekendScreen from '../screens/LizbonHaftaSonu';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -40,7 +39,6 @@ export default function RootNavigator() {
           <Stack.Screen name="Anilar" component={MemoriesScreen} />
           <Stack.Screen name="Biz" component={TogetherScreen} />
           <Stack.Screen name="GununSorusu" component={DailyQuestionScreen} />
-          <Stack.Screen name="LizbonHaftaSonu" component={LisbonWeekendScreen} />
         </>
       )}
     </Stack.Navigator>

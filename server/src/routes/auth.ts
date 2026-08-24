@@ -14,6 +14,13 @@ const GOOGLE_CLIENT_IDS = (process.env.GOOGLE_CLIENT_IDS || '')
   .map((s) => s.trim())
   .filter(Boolean);
 
+// Meta for Developers > uygulaman > Settings > Basic üzerinden alınan Uygulama
+// Kimliği ve Uygulama Gizli Anahtarı. İkisi de boşsa Facebook ile giriş bu
+// sunucuda kapalı kabul edilir. Gizli anahtar SADECE burada, sunucuda kalır;
+// mobil tarafa (mobile/.env) hiçbir zaman kopyalanmaz.
+const FACEBOOK_APP_ID = (process.env.FACEBOOK_APP_ID || '').trim();
+const FACEBOOK_APP_SECRET = (process.env.FACEBOOK_APP_SECRET || '').trim();
+
 function publicUser(row: any) {
   return {
     id: row.id,
@@ -201,6 +208,83 @@ router.post('/google', async (req, res) => {
     db.prepare(
       `INSERT INTO users (id, name, email, password_hash, invite_code, google_id, avatar_url) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(id, name, email, null, inviteCode, googleId, payload.picture ?? null);
+    row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+  }
+
+  const token = signToken(row.id);
+  res.json({ token, user: publicUser(row) });
+});
+
+router.post('/facebook', async (req, res) => {
+  if (!FACEBOOK_APP_ID || !FACEBOOK_APP_SECRET) {
+    return res
+      .status(501)
+      .json({ error: 'Facebook ile giriş bu sunucuda yapılandırılmamış (FACEBOOK_APP_ID/FACEBOOK_APP_SECRET eksik).' });
+  }
+  const { accessToken } = req.body ?? {};
+  if (!accessToken) {
+    return res.status(400).json({ error: 'accessToken gerekli.' });
+  }
+
+  let payload: any;
+  try {
+    // debug_token, jetonu bize ait "uygulama jetonu" (app_id|app_secret) ile
+    // doğrular: jetonun gerçekten bizim Facebook uygulamamız için, geçerli ve
+    // süresi dolmamış olarak üretildiğini teyit eder -- Google akışındaki
+    // `aud` kontrolünün Facebook karşılığı.
+    const appToken = `${FACEBOOK_APP_ID}|${FACEBOOK_APP_SECRET}`;
+    const debugRes = await fetch(
+      `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(String(accessToken))}&access_token=${encodeURIComponent(appToken)}`,
+    );
+    if (!debugRes.ok) throw new Error('debug_token request failed');
+    const debug: any = await debugRes.json();
+    const info = debug?.data;
+    if (!info?.is_valid || String(info?.app_id) !== FACEBOOK_APP_ID) {
+      return res.status(401).json({ error: 'Facebook jetonu bu uygulama için geçerli değil.' });
+    }
+
+    const profileRes = await fetch(
+      `https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(String(accessToken))}`,
+    );
+    if (!profileRes.ok) throw new Error('profile request failed');
+    payload = await profileRes.json();
+  } catch {
+    return res.status(401).json({ error: 'Facebook jetonu doğrulanamadı.' });
+  }
+
+  if (!payload?.id) {
+    return res.status(401).json({ error: 'Facebook jetonundan kimlik okunamadı.' });
+  }
+  if (!payload.email) {
+    // Facebook hesapları e-posta eklemeden de oluşturulabiliyor; e-posta
+    // izni verilmediyse ya da hesapta e-posta yoksa buraya düşer.
+    return res
+      .status(401)
+      .json({ error: 'Facebook hesabından e-posta alınamadı. Hesabında bir e-posta olduğundan ve izin verdiğinden emin ol.' });
+  }
+
+  const email = String(payload.email).toLowerCase();
+  const facebookId = String(payload.id);
+  const name = payload.name ? String(payload.name) : email.split('@')[0];
+
+  let row: any = db.prepare('SELECT * FROM users WHERE facebook_id = ?').get(facebookId);
+  if (!row) {
+    row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    if (row) {
+      db.prepare('UPDATE users SET facebook_id = ? WHERE id = ?').run(facebookId, row.id);
+      row = db.prepare('SELECT * FROM users WHERE id = ?').get(row.id);
+    }
+  }
+
+  if (!row) {
+    const id = newId();
+    let inviteCode = newInviteCode();
+    while (db.prepare('SELECT 1 FROM users WHERE invite_code = ?').get(inviteCode)) {
+      inviteCode = newInviteCode();
+    }
+    db.prepare(
+      `INSERT INTO users (id, name, email, password_hash, invite_code, facebook_id) VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(id, name, email, null, inviteCode, facebookId);
     row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   }
 

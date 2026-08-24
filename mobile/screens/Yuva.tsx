@@ -280,7 +280,10 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
                 />
                 <View style={styles.moodText}>
                   <Text style={styles.moodTitle} numberOfLines={1}>
-                    {partnerName}: {mood?.partner?.mood ?? 'henüz paylaşmadı'}
+                    {partnerName}:{' '}
+                    {mood && !mood.partnerSharing
+                      ? 'paylaşmıyor'
+                      : mood?.partner?.mood ?? 'henüz paylaşmadı'}
                   </Text>
                   <Text style={styles.moodHint}>onun ruh hali</Text>
                 </View>
@@ -460,22 +463,6 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
               style={styles.plantImage}
             />
           </View>
-
-          <Pressable style={styles.widgetCard} onPress={() => goTab('Biz')}>
-            <RoundIcon
-              name="widgets-outline"
-              color={colors.secondaryForeground}
-              backgroundColor={colors.secondary}
-              size={22}
-            />
-            <View style={styles.widgetCopy}>
-              <Text style={styles.widgetTitle}>Yuvanızı ana ekrana taşıyın</Text>
-              <Text style={styles.widgetCaption}>
-                Sayaç, canlı fotoğraf, ruh hâli ve kalp kısayolları.
-              </Text>
-            </View>
-            <Icon name="chevron-right" size={22} color={colors.mutedForeground} />
-          </Pressable>
         </View>
       </ScrollView>
 
@@ -1042,32 +1029,6 @@ const styles = StyleSheet.create({
     bottom: -16,
     width: 175,
     height: 175,
-  },
-  widgetCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    padding: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: alpha(colors.muted, 0.5),
-  },
-  widgetCopy: {
-    flex: 1,
-  },
-  widgetTitle: {
-    color: colors.foreground,
-    fontFamily: fonts.body,
-    fontSize: 13,
-    fontWeight: '900',
-  },
-  widgetCaption: {
-    marginTop: 4,
-    color: colors.mutedForeground,
-    fontFamily: fonts.body,
-    fontSize: 11,
-    lineHeight: 16,
   },
   tabBar: {
     position: 'absolute',

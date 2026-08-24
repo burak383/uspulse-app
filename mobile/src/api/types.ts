@@ -39,7 +39,11 @@ export interface ForgotPasswordResponse {
 
 export interface MoodResponse {
   me: { mood: string; at: string } | null;
+  /** Kendi ruh halini partnerinle paylaşıyor musun (Biz sekmesindeki gerçek anahtar). */
+  sharedByMe: boolean;
   partner: { name: string; mood?: string; at?: string } | null;
+  /** false ise partner paylaşımı kapatmış -- ruh hali metni gösterilmez. */
+  partnerSharing: boolean;
   availableMoods: string[];
 }
 

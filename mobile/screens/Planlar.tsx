@@ -21,9 +21,6 @@ import { api } from '../src/api/client';
 import { PlanItem, SavingsGoal } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 
-const lisboaImage =
-  'https://fwtngjyirchhhysukjxi.supabase.co/storage/v1/object/public/project-images/d8f99d97-2440-4f3a-addf-6eb2753287e6/8169e15e-9d49-4692-956b-d256a63d9655.png';
-
 const kasImage =
   'https://fwtngjyirchhhysukjxi.supabase.co/storage/v1/object/public/project-images/d8f99d97-2440-4f3a-addf-6eb2753287e6/cc97ef26-ea3b-42b7-89fc-3c5dbbec74d9.png';
 
@@ -481,27 +478,6 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
             </View>
           </View>
 
-          <Pressable style={styles.featureCard} onPress={() => navigation.navigate('LizbonHaftaSonu')}>
-            <View style={styles.featureImageWrap}>
-              <Image source={{ uri: lisboaImage }} style={styles.featureImage} />
-              <LinearGradient
-                colors={['transparent', colors.background]}
-                style={styles.imageOverlay}
-              />
-              <Text style={styles.featureBadge}>ÖNE ÇIKAN PLAN</Text>
-            </View>
-            <View style={styles.featureBody}>
-              <View style={styles.featureTitleRow}>
-                <View style={styles.flex}>
-                  <Text style={styles.eyebrowPrimary}>BİR HAFTA SONU KAÇAMAĞI</Text>
-                  <Text style={styles.heading}>Lizbon Hafta Sonu</Text>
-                </View>
-                <Icon name="chevron-right" size={22} color={colors.accent} />
-              </View>
-              <Text style={styles.tinyMuted}>Detayları görmek için dokun</Text>
-            </View>
-          </Pressable>
-
           {savings.map((goal) => (
             <View key={goal.id} style={styles.savingsCard}>
               <View style={styles.savingsBody}>
@@ -888,13 +864,6 @@ const styles = StyleSheet.create({
   placeTitle: { color: colors.foreground, fontFamily: fonts.body, fontSize: 14, fontWeight: '800', marginTop: 6 },
   itemActions: { flexDirection: 'row', gap: 4 },
   itemActionButton: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.18)' },
-  featureCard: { borderRadius: 20, borderWidth: 1, borderColor: colors.accent, backgroundColor: colors.card, overflow: 'hidden' },
-  featureImageWrap: { height: 176, position: 'relative' },
-  featureImage: { width: '100%', height: '100%' },
-  imageOverlay: { ...StyleSheet.absoluteFillObject },
-  featureBadge: { position: 'absolute', top: 16, left: 16, color: colors.accent, backgroundColor: colors.background, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 18, fontFamily: fonts.body, fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  featureBody: { padding: 20 },
-  featureTitleRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   savingsCard: { borderRadius: 20, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, overflow: 'hidden' },
   savingsBody: { padding: 20 },
   savingsHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },

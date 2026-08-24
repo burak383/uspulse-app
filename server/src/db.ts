@@ -149,6 +149,10 @@ ensureColumn('users', 'location_updated_at', 'location_updated_at TEXT');
 // Partnerin telefonuna gerçek zamanlı "dokunuş" bildirimi (ve titreşim)
 // gönderebilmek için Expo push jetonu -- bkz. routes/touches.ts.
 ensureColumn('users', 'push_token', 'push_token TEXT');
+// Ruh hali paylaşımını kapatabilme: açık (0/varsayılan) olduğunda partner
+// her zamanki gibi en güncel ruh halini görür; kapatıldığında (1) partnerin
+// GET /mood yanıtında bu kullanıcının ruh hali gizlenir -- bkz. routes/mood.ts.
+ensureColumn('users', 'mood_hidden', 'mood_hidden INTEGER NOT NULL DEFAULT 0');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL;');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_id ON users(facebook_id) WHERE facebook_id IS NOT NULL;');
 db.exec('CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_id, created_at DESC);');

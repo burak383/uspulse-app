@@ -6,7 +6,6 @@ export type RootStackParamList = {
   Anilar: undefined;
   Biz: undefined;
   GununSorusu: undefined;
-  LizbonHaftaSonu: undefined;
 };
 
 export type TabRouteName = 'Yuva' | 'Planlar' | 'Anilar' | 'Biz';

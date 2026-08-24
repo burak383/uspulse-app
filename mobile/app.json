@@ -7,20 +7,25 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
     "splash": {
-      "backgroundColor": "#34243A"
+      "backgroundColor": "#34243A",
+      "image": "./assets/icon.png",
+      "resizeMode": "contain"
     },
     "assetBundlePatterns": [
       "**/*"
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.uspulse.mobile"
+      "bundleIdentifier": "app.uspulse.mobile",
+      "icon": "./assets/icon.png"
     },
     "android": {
       "package": "app.uspulse.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#34243A"
+        "backgroundColor": "#34243A",
+        "foregroundImage": "./assets/adaptive-icon.png"
       }
     },
     "web": {
