@@ -9,6 +9,10 @@ import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
 import { api, ApiError, setAuthToken } from '../api/client';
 import { AuthResponse, Couple, ForgotPasswordResponse, MeResponse, PublicUser } from '../api/types';
+import {
+  startBackgroundLocationTracking,
+  stopBackgroundLocationTracking,
+} from '../location/backgroundLocationTask';
 
 const TOKEN_KEY = 'uspulse_token';
 // expo-secure-store keys can only contain word characters, '.', '-'.
@@ -74,6 +78,9 @@ interface AuthContextValue {
   locationSubmitting: boolean;
   shareLocationNow: () => Promise<void>;
   stopSharingLocation: () => Promise<void>;
+  // Konum paylaşımı açıkken uygulama arka plandayken/kapalıyken de mesafeyi
+  // güncel tutan sürekli takip gerçekten etkin mi (izin + görev kaydı).
+  backgroundLocationEnabled: boolean;
   // "Kalbimi Gönder" titreşimi: kendi cihazında anlık geri bildirim VE
   // partnerin "dokunuşu" gerçek zamanlı bildirimle aldığında titreşim.
   hapticsEnabled: boolean;
@@ -95,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [locationSharedByMe, setLocationSharedByMe] = useState(false);
   const [locationSharedByPartner, setLocationSharedByPartner] = useState(false);
   const [locationSubmitting, setLocationSubmitting] = useState(false);
+  const [backgroundLocationEnabled, setBackgroundLocationEnabled] = useState(false);
   const [hapticsEnabled, setHapticsEnabledState] = useState(true);
 
   useEffect(() => {
@@ -153,14 +161,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => sub.remove();
   }, [hapticsEnabled]);
 
-  const applyMe = useCallback((me: MeResponse) => {
-    setUser(me.user);
-    setPartner(me.partner);
-    setCouple(me.couple);
-    setDistanceKm(me.distanceKm);
-    setLocationSharedByMe(me.locationSharedByMe);
-    setLocationSharedByPartner(me.locationSharedByPartner);
+  // Sunucudaki "konum paylaşılıyor" durumuyla cihazdaki arka plan takip
+  // görevini senkronize eder: paylaşım kapalıysa görevi durdurur; açıksa ve
+  // "her zaman izin ver" konum izni zaten verilmişse (burada YENİDEN
+  // SORULMAZ -- izin istemek yalnızca shareLocationNow/shareLocationBestEffort
+  // içindeki açık kullanıcı eylemlerinde olur) görevi (yeniden) başlatır. Bu,
+  // uygulama süreci OS tarafından öldürülüp yeniden başlatıldığında takibin
+  // kendini toparlamasını sağlar.
+  const syncBackgroundLocationTracking = useCallback(async (shared: boolean) => {
+    try {
+      if (!shared) {
+        await stopBackgroundLocationTracking();
+        setBackgroundLocationEnabled(false);
+        return;
+      }
+      const bg = await Location.getBackgroundPermissionsAsync();
+      if (bg.status !== Location.PermissionStatus.GRANTED) {
+        setBackgroundLocationEnabled(false);
+        return;
+      }
+      const started = await startBackgroundLocationTracking();
+      setBackgroundLocationEnabled(started);
+    } catch {
+      setBackgroundLocationEnabled(false);
+    }
   }, []);
+
+  const applyMe = useCallback(
+    (me: MeResponse) => {
+      setUser(me.user);
+      setPartner(me.partner);
+      setCouple(me.couple);
+      setDistanceKm(me.distanceKm);
+      setLocationSharedByMe(me.locationSharedByMe);
+      setLocationSharedByPartner(me.locationSharedByPartner);
+      // Fire-and-forget: ekranı bloklamaz, en kötü ihtimalle bir sonraki
+      // refresh()'te tekrar denenir.
+      syncBackgroundLocationTracking(me.locationSharedByMe);
+    },
+    [syncBackgroundLocationTracking],
+  );
 
   // Konumu izin varsa sessizce paylaşır; izin yoksa/istenmezse ya da GPS/ağ
   // hatası olursa görünmez şekilde vazgeçer -- giriş akışını ASLA engellemez
@@ -179,6 +219,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       await api.put('/me/location', { lat: pos.coords.latitude, lng: pos.coords.longitude });
       setLocationSharedByMe(true);
+
+      // Arka planda da takip edebilmek için "her zaman izin ver" konumunu da
+      // dener -- kullanıcı daha önce kalıcı olarak reddettiyse (canAskAgain
+      // false) tekrar sormuyoruz, sessizce yalnızca ön plan paylaşımıyla
+      // devam ediyoruz.
+      const bgCurrent = await Location.getBackgroundPermissionsAsync();
+      let bgGranted = bgCurrent.status === Location.PermissionStatus.GRANTED;
+      if (!bgGranted && bgCurrent.canAskAgain) {
+        const bgRequested = await Location.requestBackgroundPermissionsAsync();
+        bgGranted = bgRequested.status === Location.PermissionStatus.GRANTED;
+      }
+      if (bgGranted) {
+        const started = await startBackgroundLocationTracking();
+        setBackgroundLocationEnabled(started);
+      } else {
+        setBackgroundLocationEnabled(false);
+      }
     } catch {
       // konum paylaşılamadı: sessizce geç
     }
@@ -251,6 +308,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       await api.put('/me/location', { lat: pos.coords.latitude, lng: pos.coords.longitude });
+
+      // Bunu açıkça bastığı için burada "her zaman izin ver" konumunu da
+      // isteriz -- arka planda da takip edebilmek için gerekli. Reddedilirse
+      // paylaşım yine de başarılı sayılır, sadece arka plan takibi kapalı
+      // kalır (Biz ekranında bu durum gösterilir).
+      const bgCurrent = await Location.getBackgroundPermissionsAsync();
+      let bgGranted = bgCurrent.status === Location.PermissionStatus.GRANTED;
+      if (!bgGranted) {
+        const bgRequested = await Location.requestBackgroundPermissionsAsync();
+        bgGranted = bgRequested.status === Location.PermissionStatus.GRANTED;
+      }
+      if (bgGranted) {
+        const started = await startBackgroundLocationTracking();
+        setBackgroundLocationEnabled(started);
+      } else {
+        setBackgroundLocationEnabled(false);
+      }
+
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Konum paylaşılamadı.');
@@ -264,6 +339,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setError(null);
     setLocationSubmitting(true);
     try {
+      await stopBackgroundLocationTracking();
+      setBackgroundLocationEnabled(false);
       await api.delete('/me/location');
       setLocationSharedByMe(false);
       setDistanceKm(null);
@@ -401,6 +478,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // hâlâ geçerliyken, token'ı temizlemeden önce). Başarısız olursa önemli
     // değil, çıkışı engellemesin.
     await api.delete('/me/push-token').catch(() => {});
+    // Arka plan konum takibi de durmalı: çıkış yapılmış bir cihaz artık
+    // konum göndermemeli.
+    await stopBackgroundLocationTracking().catch(() => {});
+    setBackgroundLocationEnabled(false);
     await AsyncStorage.removeItem(TOKEN_KEY);
     setAuthToken(null);
     setUser(null);
@@ -424,6 +505,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       throw e;
     }
     // Hesap sunucuda silindi; cihazdaki oturum/biyometrik izleri de temizlenir.
+    await stopBackgroundLocationTracking().catch(() => {});
+    setBackgroundLocationEnabled(false);
     await AsyncStorage.removeItem(TOKEN_KEY);
     await SecureStore.deleteItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
     await AsyncStorage.removeItem(BIOMETRIC_FLAG_KEY);
@@ -515,6 +598,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       locationSubmitting,
       shareLocationNow,
       stopSharingLocation,
+      backgroundLocationEnabled,
       hapticsEnabled,
       setHapticsEnabled,
     }),
@@ -547,6 +631,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       locationSubmitting,
       shareLocationNow,
       stopSharingLocation,
+      backgroundLocationEnabled,
       hapticsEnabled,
       setHapticsEnabled,
     ],

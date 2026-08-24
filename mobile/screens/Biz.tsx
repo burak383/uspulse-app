@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -156,6 +157,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     locationSubmitting,
     shareLocationNow,
     stopSharingLocation,
+    backgroundLocationEnabled,
     hapticsEnabled,
     setHapticsEnabled,
   } = useAuth();
@@ -177,7 +179,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     if (locationSharedByMe) {
       Alert.alert(
         'Konum paylaşımını kapat',
-        'Kapatırsan aranızdaki mesafe artık gösterilmez. Partnerinin konumu bu uygulamada zaten hiçbir zaman görünmüyor, sadece hesaplanan mesafe gösteriliyordu.',
+        'Kapatırsan aranızdaki mesafe artık gösterilmez ve arka plan konum takibi durur. Partnerinin konumu bu uygulamada zaten hiçbir zaman görünmüyor, sadece hesaplanan mesafe gösteriliyordu.',
         [
           { text: 'Vazgeç', style: 'cancel' },
           {
@@ -408,6 +410,28 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
                   </Text>
                 )}
               </View>
+            </View>
+          )}
+
+          {locationSharedByMe && (
+            <View style={styles.trackingRow}>
+              <Icon name="radar" size={15} color={backgroundLocationEnabled ? colors.success : colors.mutedForeground} />
+              {backgroundLocationEnabled ? (
+                <Text style={styles.trackingText}>
+                  Arka planda da takip ediliyor -- uygulama kapalıyken bile mesafe güncel kalır.
+                </Text>
+              ) : (
+                <View style={styles.flex}>
+                  <Text style={styles.trackingText}>
+                    Arka plan takibi kapalı -- mesafe yalnızca uygulamayı her açtığında güncellenir.
+                  </Text>
+                  <Pressable onPress={() => Linking.openSettings()}>
+                    <Text style={styles.trackingLink}>
+                      Açmak için Ayarlar'dan konum iznini "Her Zaman İzin Ver" yap
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
           )}
 
@@ -767,6 +791,26 @@ const styles = StyleSheet.create({
     color: colors.foreground,
     fontFamily: theme.fonts.heading,
     fontSize: 20,
+  },
+  trackingRow: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+  },
+  trackingText: {
+    flex: 1,
+    color: colors.mutedForeground,
+    fontFamily: theme.fonts.body,
+    fontSize: 11,
+    lineHeight: 16,
+  },
+  trackingLink: {
+    marginTop: 4,
+    color: colors.primary,
+    fontFamily: theme.fonts.body,
+    fontSize: 11,
+    fontWeight: '800',
   },
   privacyList: {
     marginTop: 10,
