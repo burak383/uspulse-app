@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import db from '../db';
 import { requireAuth } from '../middleware/auth';
+import { deleteUploadedMediaByUrl } from '../uploads';
 
 const router = Router();
 
@@ -137,10 +138,19 @@ router.delete('/avatar', requireAuth, (req, res) => {
 const deleteMyData = db.transaction((userId: string) => {
   db.prepare('DELETE FROM moods WHERE user_id = ?').run(userId);
   db.prepare('DELETE FROM touches WHERE sender_id = ?').run(userId);
+  // Satırları silmeden önce, varsa diskteki gerçek fotoğraf/video/ses
+  // dosyalarını da temizle -- yoksa DB kaydı gider ama dosya diskte öksüz kalır.
+  const myMemories = db
+    .prepare('SELECT media_url FROM memories WHERE author_id = ?')
+    .all(userId) as { media_url: string | null }[];
+  for (const m of myMemories) deleteUploadedMediaByUrl(m.media_url);
   db.prepare('DELETE FROM memories WHERE author_id = ?').run(userId);
   db.prepare('DELETE FROM answers WHERE user_id = ?').run(userId);
   db.prepare('DELETE FROM savings_contributions WHERE user_id = ?').run(userId);
   db.prepare('DELETE FROM plan_items WHERE added_by = ?').run(userId);
+  // Bildirimler tablosu recipient_id/actor_id ile users'a FOREIGN KEY ile
+  // bağlı -- bunlar silinmeden users satırı silinirse FK ihlali oluşur.
+  db.prepare('DELETE FROM notifications WHERE recipient_id = ? OR actor_id = ?').run(userId, userId);
   db.prepare('DELETE FROM users WHERE id = ?').run(userId);
 });
 

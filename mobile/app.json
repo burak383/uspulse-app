@@ -19,7 +19,10 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.uspulse.mobile",
-      "icon": "./assets/icon.png"
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Anılar'a ses notu ekleyebilmek için mikrofonuna erişim izni gerekir."
+      }
     },
     "android": {
       "package": "app.uspulse.mobile",
@@ -65,9 +68,16 @@
         {
           "photosPermission": "Profil fotoğrafı seçebilmek için fotoğraflarına erişim izni gerekir.",
           "cameraPermission": false,
-          "microphonePermission": false
+          "microphonePermission": "Anılar'a ses notu ekleyebilmek için mikrofonuna erişim izni gerekir."
         }
-      ]
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Anılar'a ses notu ekleyebilmek için mikrofonuna erişim izni gerekir."
+        }
+      ],
+      "expo-video"
     ]
   }
 }

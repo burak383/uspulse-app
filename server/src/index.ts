@@ -13,13 +13,23 @@ import questionsRouter from './routes/questions';
 import plansRouter from './routes/plans';
 import savingsRouter from './routes/savings';
 import notificationsRouter from './routes/notifications';
+import { UPLOADS_DIR } from './uploads';
 
 const app = express();
+// Render (ve genel olarak çoğu PaaS) bir ters proxy arkasında çalıştırıyor;
+// bu olmadan req.protocol her zaman 'http' döner ve routes/memories.ts'te
+// oluşturduğumuz medya URL'leri (https yerine) yanlış şemayla üretilir.
+app.set('trust proxy', 1);
 app.use(cors());
 // Varsayılan 100kb sınırı profil fotoğrafı (base64) yüklemeleri için yetersiz
 // -- sıkıştırılmış/512x512'ye küçültülmüş bir JPEG'in base64 hâli genelde
 // birkaç yüz KB'a kadar çıkabiliyor. bkz. routes/me.ts PUT /avatar.
+// NOT: bu limit sadece application/json gövdeler için geçerli -- anı
+// medyası (fotoğraf/video/ses) multer ile ayrı bir multipart akışından
+// okunuyor ve bu limitten etkilenmiyor (bkz. routes/memories.ts, uploads.ts).
 app.use(express.json({ limit: '3mb' }));
+// Yüklenen anı medyalarını (fotoğraf/video/ses) doğrudan sunuyoruz.
+app.use('/uploads', express.static(UPLOADS_DIR));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, name: 'uspulse-server', time: new Date().toISOString() });

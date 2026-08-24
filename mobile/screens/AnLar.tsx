@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Modal,
@@ -7,7 +8,6 @@ import {
   SafeAreaView,
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   TextInput,
   View,
@@ -16,9 +16,21 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
+import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioPlayer,
+  useAudioPlayerStatus,
+  useAudioRecorder,
+  useAudioRecorderState,
+} from 'expo-audio';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { colors, fonts } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
-import { api } from '../src/api/client';
+import { api, apiUpload } from '../src/api/client';
 import { Memory } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 
@@ -130,6 +142,47 @@ function Capsule({
   );
 }
 
+// Bir anının oynatıcısını (ses) barındırır -- her satırın kendi useAudioPlayer
+// örneği olması gerektiği için ayrı bir bileşen (hook'lar liste içinde
+// koşullu/döngüsel çağrılamaz).
+function AudioMemoryRow({ uri }: { uri: string }) {
+  const player = useAudioPlayer(uri);
+  const status = useAudioPlayerStatus(player);
+  const durationLabel = status.duration ? `${Math.round(status.duration)}sn` : '';
+  return (
+    <View style={styles.audioRow}>
+      <Pressable
+        accessibilityLabel={status.playing ? 'Duraklat' : 'Oynat'}
+        style={styles.audioPlayButton}
+        onPress={() => (status.playing ? player.pause() : player.play())}
+      >
+        <Icon
+          name={status.playing ? 'pause' : 'play'}
+          size={16}
+          color={colors.primaryForeground}
+        />
+      </Pressable>
+      <Text style={styles.mutedSmall}>Ses notu{durationLabel ? ` · ${durationLabel}` : ''}</Text>
+    </View>
+  );
+}
+
+// Aynı sebeple: her video anısı kendi useVideoPlayer örneğine sahip olmalı.
+function VideoMemoryPlayer({ uri }: { uri: string }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = false;
+  });
+  return (
+    <VideoView
+      style={styles.mediaPreviewVideo}
+      player={player}
+      contentFit="cover"
+      nativeControls
+      allowsFullscreen
+    />
+  );
+}
+
 const TYPE_LABEL: Record<Memory['type'], string> = {
   photo: 'Fotoğraf',
   video: 'Video',
@@ -138,6 +191,27 @@ const TYPE_LABEL: Record<Memory['type'], string> = {
   note: 'Not',
   capsule: 'Kapsül',
 };
+
+const ICON_BY_TYPE: Record<Memory['type'], IconProps['name']> = {
+  photo: 'image',
+  video: 'video',
+  audio: 'mic',
+  drawing: 'edit-3',
+  note: 'edit-3',
+  capsule: 'lock',
+};
+
+type CreateKind = 'note' | 'photo' | 'video' | 'audio' | 'capsule';
+
+const KIND_OPTIONS: { value: CreateKind; label: string; icon: IconProps['name'] }[] = [
+  { value: 'note', label: 'Not', icon: 'edit-3' },
+  { value: 'photo', label: 'Fotoğraf', icon: 'image' },
+  { value: 'video', label: 'Video', icon: 'video' },
+  { value: 'audio', label: 'Ses notu', icon: 'mic' },
+  { value: 'capsule', label: 'Kapsül', icon: 'lock' },
+];
+
+type PickedMedia = { uri: string; mimeType: string; fileName: string };
 
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -148,8 +222,19 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
-  const [isCapsule, setIsCapsule] = useState(false);
+  const [kind, setKind] = useState<CreateKind>('note');
   const [unlockAt, setUnlockAt] = useState('');
+  const [pickedMedia, setPickedMedia] = useState<PickedMedia | null>(null);
+  const [recordedUri, setRecordedUri] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // Ses notu kaydı: expo-audio hook'ları bileşenin en üst seviyesinde,
+  // koşulsuz çağrılmalı (React hook kuralı) -- modal kapalıyken de var olur,
+  // sadece kullanılmaz.
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const recorderState = useAudioRecorderState(recorder, 200);
+  const previewPlayer = useAudioPlayer(recordedUri ?? undefined);
+  const previewStatus = useAudioPlayerStatus(previewPlayer);
 
   const load = useCallback(async () => {
     try {
@@ -183,12 +268,20 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
 
   const monthLabel = new Date().toLocaleDateString('tr-TR', { month: 'long', year: 'numeric' });
 
+  const stopRecordingIfActive = () => {
+    if (recorderState.isRecording) {
+      recorder.stop().catch(() => {});
+    }
+  };
+
   const openAddModal = () => {
     setEditingMemory(null);
     setTitle('');
     setNote('');
-    setIsCapsule(false);
+    setKind('note');
     setUnlockAt('');
+    setPickedMedia(null);
+    setRecordedUri(null);
     setModalOpen(true);
   };
 
@@ -196,31 +289,141 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
     setEditingMemory(memory);
     setTitle(memory.title);
     setNote(memory.note ?? '');
-    setIsCapsule(memory.type === 'capsule');
+    setKind(memory.type === 'capsule' ? 'capsule' : 'note');
     setUnlockAt(memory.unlock_at ?? '');
+    setPickedMedia(null);
+    setRecordedUri(null);
     setModalOpen(true);
   };
 
-  const closeModal = () => setModalOpen(false);
+  const closeModal = () => {
+    stopRecordingIfActive();
+    setModalOpen(false);
+  };
+
+  const pickPhoto = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        'Fotoğraf izni gerekli',
+        'Fotoğraf seçebilmek için Ayarlar\'dan UsPulse\'a fotoğraf erişimi vermelisin.',
+      );
+      return;
+    }
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+    if (picked.canceled || !picked.assets?.[0]) return;
+    // Anı fotoğrafları avatardan farklı olarak kare olmak zorunda değil, ama
+    // yine de makul bir genişliğe küçültüp sıkıştırıyoruz -- hem yükleme hızlı
+    // olsun hem de 8MB'lık sunucu sınırını rahatça karşılasın.
+    const manipulated = await ImageManipulator.manipulateAsync(
+      picked.assets[0].uri,
+      [{ resize: { width: 1600 } }],
+      { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG },
+    );
+    setPickedMedia({ uri: manipulated.uri, mimeType: 'image/jpeg', fileName: 'foto.jpg' });
+  };
+
+  const pickVideo = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        'Galeri izni gerekli',
+        'Video seçebilmek için Ayarlar\'dan UsPulse\'a fotoğraf/video erişimi vermelisin.',
+      );
+      return;
+    }
+    const picked = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['videos'], quality: 0.7 });
+    if (picked.canceled || !picked.assets?.[0]) return;
+    const asset = picked.assets[0];
+    if (asset.fileSize && asset.fileSize > 50 * 1024 * 1024) {
+      Alert.alert('Video çok büyük', 'En fazla 50MB büyüklüğünde bir video seçebilirsin.');
+      return;
+    }
+    setPickedMedia({ uri: asset.uri, mimeType: asset.mimeType || 'video/mp4', fileName: 'video.mp4' });
+  };
+
+  const selectKind = (next: CreateKind) => {
+    stopRecordingIfActive();
+    setKind(next);
+    setPickedMedia(null);
+    setRecordedUri(null);
+    if (next === 'photo') pickPhoto();
+    else if (next === 'video') pickVideo();
+  };
+
+  const startRecording = async () => {
+    const permission = await requestRecordingPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        'Mikrofon izni gerekli',
+        'Ses notu kaydedebilmek için Ayarlar\'dan UsPulse\'a mikrofon erişimi vermelisin.',
+      );
+      return;
+    }
+    await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+    setRecordedUri(null);
+    await recorder.prepareToRecordAsync();
+    recorder.record();
+  };
+
+  const stopRecording = async () => {
+    await recorder.stop();
+    if (recorder.uri) setRecordedUri(recorder.uri);
+  };
+
+  const canSubmit =
+    Boolean(title.trim()) &&
+    !submitting &&
+    !(!editingMemory && kind === 'photo' && !pickedMedia) &&
+    !(!editingMemory && kind === 'video' && !pickedMedia) &&
+    !(!editingMemory && kind === 'audio' && !recordedUri);
 
   const submitMemory = async () => {
-    if (!title.trim()) return;
-    if (editingMemory) {
-      await api.patch(`/memories/${editingMemory.id}`, {
-        title: title.trim(),
-        note: note.trim() || null,
-        unlockAt: editingMemory.type === 'capsule' ? unlockAt.trim() || null : undefined,
-      });
-    } else {
-      await api.post('/memories', {
-        type: isCapsule ? 'capsule' : 'note',
-        title: title.trim(),
-        note: note.trim() || undefined,
-        unlockAt: isCapsule ? unlockAt.trim() || undefined : undefined,
-      });
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      if (editingMemory) {
+        await api.patch(`/memories/${editingMemory.id}`, {
+          title: title.trim(),
+          note: note.trim() || null,
+          unlockAt: editingMemory.type === 'capsule' ? unlockAt.trim() || null : undefined,
+        });
+      } else if (kind === 'photo' || kind === 'video' || kind === 'audio') {
+        const media: PickedMedia | null =
+          kind === 'audio'
+            ? recordedUri
+              ? { uri: recordedUri, mimeType: 'audio/m4a', fileName: 'ses-notu.m4a' }
+              : null
+            : pickedMedia;
+        if (!media) {
+          setSubmitting(false);
+          return;
+        }
+        const form = new FormData();
+        form.append('type', kind);
+        form.append('title', title.trim());
+        if (note.trim()) form.append('note', note.trim());
+        form.append('media', {
+          uri: media.uri,
+          name: media.fileName,
+          type: media.mimeType,
+        } as unknown as Blob);
+        await apiUpload('/memories', form);
+      } else {
+        await api.post('/memories', {
+          type: kind,
+          title: title.trim(),
+          note: note.trim() || undefined,
+          unlockAt: kind === 'capsule' ? unlockAt.trim() || undefined : undefined,
+        });
+      }
+      setModalOpen(false);
+      load();
+    } catch (e) {
+      Alert.alert('Kaydedilemedi', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
+    } finally {
+      setSubmitting(false);
     }
-    setModalOpen(false);
-    load();
   };
 
   const deleteMemory = (memory: Memory) => {
@@ -292,7 +495,7 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
                     <View style={styles.memoryBody}>
                       <View style={styles.noteRow}>
                         <RoundIcon
-                          name="edit-3"
+                          name={ICON_BY_TYPE[memory.type]}
                           size={19}
                           color={colors.accent}
                           background={alpha(colors.accent, 0.15)}
@@ -316,6 +519,16 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
                           onDelete={() => deleteMemory(memory)}
                         />
                       </View>
+
+                      {memory.type === 'photo' && memory.media_url ? (
+                        <Image source={{ uri: memory.media_url }} style={styles.mediaPreviewImage} />
+                      ) : null}
+                      {memory.type === 'video' && memory.media_url ? (
+                        <VideoMemoryPlayer uri={memory.media_url} />
+                      ) : null}
+                      {memory.type === 'audio' && memory.media_url ? (
+                        <AudioMemoryRow uri={memory.media_url} />
+                      ) : null}
                     </View>
                   </View>
                 ))}
@@ -378,8 +591,8 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
             </View>
             <View style={styles.statsGrid}>
               <StatCard icon="image" value={String(countFor('photo'))} label="Fotoğraf" color={colors.primary} />
+              <StatCard icon="video" value={String(countFor('video'))} label="Video" color={colors.accent} />
               <StatCard icon="mic" value={String(countFor('audio'))} label="Ses notu" color={colors.success} />
-              <StatCard icon="edit-3" value={String(countFor('drawing') + countFor('note'))} label="Not / Çizim" color={colors.accent} />
             </View>
           </View>
 
@@ -395,7 +608,7 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
               <Text style={styles.eyebrowPrimary}>BUGÜN SAKLA</Text>
               <Text style={styles.newMemoryTitle}>Yeni bir anı bırakın</Text>
               <Text style={styles.mutedSmall}>
-                Bir not, bir başlık - {user?.name ?? 'sen'}'den bir iz.
+                Bir fotoğraf, video, ses notu ya da yazı - {user?.name ?? 'sen'}'den bir iz.
               </Text>
             </View>
             <Icon name="chevron-right" size={21} color={colors.mutedForeground} />
@@ -412,15 +625,109 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
 
       <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={closeModal}>
         <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
+          <ScrollView
+            style={styles.modalScroll}
+            contentContainerStyle={styles.modalCard}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.modalTitle}>{editingMemory ? 'Anıyı düzenle' : 'Yeni anı'}</Text>
+
+            {!editingMemory && (
+              <View style={styles.kindRow}>
+                {KIND_OPTIONS.map((opt) => (
+                  <Pressable
+                    key={opt.value}
+                    style={[styles.kindChip, kind === opt.value && styles.kindChipActive]}
+                    onPress={() => selectKind(opt.value)}
+                  >
+                    <Icon
+                      name={opt.icon}
+                      size={13}
+                      color={kind === opt.value ? colors.primaryForeground : colors.mutedForeground}
+                    />
+                    <Text
+                      style={[styles.kindChipText, kind === opt.value && styles.kindChipTextActive]}
+                    >
+                      {opt.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+
+            {!editingMemory && (kind === 'photo' || kind === 'video') && (
+              <Pressable
+                style={styles.mediaPickButton}
+                onPress={kind === 'photo' ? pickPhoto : pickVideo}
+              >
+                {pickedMedia ? (
+                  kind === 'photo' ? (
+                    <Image source={{ uri: pickedMedia.uri }} style={styles.mediaPickPreviewImage} />
+                  ) : (
+                    <View style={styles.mediaPickPreviewVideo}>
+                      <Icon name="video" size={22} color={colors.primary} />
+                      <Text style={styles.mutedSmall}>Video seçildi · değiştirmek için dokun</Text>
+                    </View>
+                  )
+                ) : (
+                  <>
+                    <Icon name={kind === 'photo' ? 'image' : 'video'} size={22} color={colors.primary} />
+                    <Text style={styles.mediaPickText}>
+                      {kind === 'photo' ? 'Fotoğraf seç' : 'Video seç'}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            )}
+
+            {!editingMemory && kind === 'audio' && (
+              <View style={styles.audioRecordBox}>
+                {!recordedUri ? (
+                  <Pressable
+                    style={[styles.recordButton, recorderState.isRecording && styles.recordButtonActive]}
+                    onPress={recorderState.isRecording ? stopRecording : startRecording}
+                  >
+                    <Icon
+                      name={recorderState.isRecording ? 'square' : 'mic'}
+                      size={18}
+                      color={colors.primaryForeground}
+                    />
+                    <Text style={styles.recordButtonText}>
+                      {recorderState.isRecording
+                        ? `Durdur · ${Math.round(recorderState.durationMillis / 1000)}sn`
+                        : 'Kaydı başlat'}
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <View style={styles.audioPreviewRow}>
+                    <Pressable
+                      style={styles.audioPlayButton}
+                      onPress={() => (previewStatus.playing ? previewPlayer.pause() : previewPlayer.play())}
+                    >
+                      <Icon
+                        name={previewStatus.playing ? 'pause' : 'play'}
+                        size={16}
+                        color={colors.primaryForeground}
+                      />
+                    </Pressable>
+                    <Text style={styles.mutedSmall}>
+                      Kaydedildi{previewStatus.duration ? ` · ${Math.round(previewStatus.duration)}sn` : ''}
+                    </Text>
+                    <Pressable onPress={() => setRecordedUri(null)}>
+                      <Text style={styles.reRecordText}>Yeniden kaydet</Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            )}
+
             <TextInput
               value={title}
               onChangeText={setTitle}
               placeholder="Başlık (örn. Pazar kahvaltısı)"
               placeholderTextColor={colors.mutedForeground}
               style={styles.modalInput}
-              autoFocus
+              autoFocus={!editingMemory}
             />
             <TextInput
               value={note}
@@ -431,21 +738,7 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
               multiline
             />
 
-            {!editingMemory && (
-              <View style={styles.capsuleToggleRow}>
-                <View style={styles.flex}>
-                  <Text style={styles.capsuleToggleTitle}>Zaman kapsülü olsun</Text>
-                  <Text style={styles.mutedSmall}>Belirlediğiniz tarihe kadar gizli kalır.</Text>
-                </View>
-                <Switch
-                  value={isCapsule}
-                  onValueChange={setIsCapsule}
-                  trackColor={{ true: colors.primary, false: colors.muted }}
-                />
-              </View>
-            )}
-
-            {(isCapsule || editingMemory?.type === 'capsule') && (
+            {(kind === 'capsule' || editingMemory?.type === 'capsule') && (
               <TextInput
                 value={unlockAt}
                 onChangeText={setUnlockAt}
@@ -459,8 +752,16 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
               <Pressable style={styles.modalCancel} onPress={closeModal}>
                 <Text style={styles.modalCancelText}>Vazgeç</Text>
               </Pressable>
-              <Pressable style={styles.modalConfirm} onPress={submitMemory} disabled={!title.trim()}>
-                <Text style={styles.modalConfirmText}>Kaydet</Text>
+              <Pressable
+                style={[styles.modalConfirm, !canSubmit && styles.modalConfirmDisabled]}
+                onPress={submitMemory}
+                disabled={!canSubmit}
+              >
+                {submitting ? (
+                  <ActivityIndicator color={colors.primaryForeground} />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Kaydet</Text>
+                )}
               </Pressable>
             </View>
 
@@ -476,7 +777,7 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
                 <Text style={styles.modalDeleteText}>Anıyı sil</Text>
               </Pressable>
             )}
-          </View>
+          </ScrollView>
         </View>
       </Modal>
     </SafeAreaView>
@@ -648,6 +949,7 @@ const styles = StyleSheet.create({
   },
   memoryBody: {
     padding: 16,
+    gap: 12,
   },
   memoryTitleText: {
     marginTop: 4,
@@ -819,20 +1121,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: alpha(colors.muted, 0.7),
   },
-  capsuleToggleRow: {
+  mediaPreviewImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 14,
+    backgroundColor: colors.muted,
+  },
+  mediaPreviewVideo: {
+    width: '100%',
+    height: 200,
+    borderRadius: 14,
+    backgroundColor: colors.muted,
+  },
+  audioRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    paddingVertical: 4,
+    gap: 10,
   },
-  capsuleToggleTitle: {
-    color: colors.foreground,
-    fontFamily: fonts.body,
-    fontSize: 13,
-    fontWeight: '700',
+  audioPlayButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  modalScroll: {
+    width: '100%',
+    maxHeight: '86%',
   },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  modalCard: { width: '100%', maxWidth: 360, padding: 20, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, gap: 12 },
+  modalCard: { width: '100%', maxWidth: 360, alignSelf: 'center', padding: 20, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, gap: 12 },
   modalTitle: { color: colors.foreground, fontFamily: fonts.heading, fontSize: 19 },
   modalInput: { minHeight: 46, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground, fontFamily: fonts.body, fontSize: 14 },
   modalTextArea: { minHeight: 80, paddingTop: 12, textAlignVertical: 'top' },
@@ -840,7 +1159,89 @@ const styles = StyleSheet.create({
   modalCancel: { flex: 1, minHeight: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.secondary },
   modalCancelText: { color: colors.secondaryForeground, fontFamily: fonts.body, fontSize: 13, fontWeight: '800' },
   modalConfirm: { flex: 1, minHeight: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
+  modalConfirmDisabled: { opacity: 0.5 },
   modalConfirmText: { color: colors.primaryForeground, fontFamily: fonts.body, fontSize: 13, fontWeight: '800' },
   modalDelete: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 4, paddingVertical: 8 },
   modalDeleteText: { color: colors.destructive, fontFamily: fonts.body, fontSize: 13, fontWeight: '700' },
+  kindRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  kindChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    backgroundColor: colors.muted,
+  },
+  kindChipActive: {
+    backgroundColor: colors.primary,
+  },
+  kindChipText: {
+    color: colors.mutedForeground,
+    fontFamily: fonts.body,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  kindChipTextActive: {
+    color: colors.primaryForeground,
+  },
+  mediaPickButton: {
+    minHeight: 90,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    overflow: 'hidden',
+  },
+  mediaPickText: {
+    color: colors.primary,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  mediaPickPreviewImage: {
+    width: '100%',
+    height: 160,
+  },
+  mediaPickPreviewVideo: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 20,
+  },
+  audioRecordBox: {
+    alignItems: 'flex-start',
+  },
+  recordButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 22,
+    backgroundColor: colors.primary,
+  },
+  recordButtonActive: {
+    backgroundColor: colors.destructive,
+  },
+  recordButtonText: {
+    color: colors.primaryForeground,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  audioPreviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  reRecordText: {
+    color: colors.primary,
+    fontFamily: fonts.body,
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });
