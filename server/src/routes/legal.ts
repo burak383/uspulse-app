@@ -77,6 +77,8 @@ router.get('/privacy', (_req, res) => {
         <li><strong>Anılara eklediğin fotoğraf/video/ses (opsiyonel):</strong> Anılar sekmesinde bir fotoğraf, video veya ses notu eklersen, bu dosya sunucumuza yüklenir ve yalnızca senin ile eşleşmiş partnerine gösterilir. Bir anıyı sildiğinde ya da hesabını sildiğinde, o anıya ait dosya da sunucudan kalıcı olarak silinir.</li>
         <li><strong>Konum (opsiyonel):</strong> Biz sekmesinden konum paylaşımını açarsan, cihazının yaklaşık enlem/boylamını sunucuya göndeririz. "Her zaman izin ver" konum iznini verirsen bu, aranızdaki mesafeyi güncel tutmak için <strong>uygulama kapalıyken/arka plandayken de</strong> periyodik olarak (birkaç dakikada bir ya da belirgin bir konum değişikliğinde) gönderilir; yalnızca "uygulamayı kullanırken" izni verirsen paylaşım sadece uygulamayı her açtığında gerçekleşir. Bunu <strong>istediğin zaman kapatabilirsin</strong>; kapatınca hem arka plan takibi durur hem de sunucudaki kayıt silinir.</li>
         <li><strong>Teknik veriler:</strong> sunucu barındırma sağlayıcımızın (Render) tuttuğu standart erişim kayıtları (ör. IP adresi, istek zamanı) — bunlar güvenlik ve hata ayıklama amacıyla kısa süreliğine tutulur.</li>
+        <li><strong>Abonelik durumu (varsa):</strong> aylık/yıllık abonelik satın alırsan, satın alma işlemini yöneten RevenueCat servisi bize aboneliğinin aktif olup olmadığını, hangi ürünün ve hangi mağazanın (App Store/Google Play) satın alındığını ve son geçerlilik tarihini bildirir. Kart numaran ya da diğer ödeme bilgilerin bize hiçbir zaman ulaşmaz; bunlar doğrudan Apple/Google tarafından işlenir.</li>
+        <li><strong>Anlık bildirim (push) jetonu (opsiyonel):</strong> bildirimlere izin verirsen, cihazını (ve yalnızca o cihazı) tanımlayan bir Expo push jetonu sunucumuza kaydedilir. Bu jeton, partnerin ruh hâlini değiştirdiğinde, sana bir "kalp" gönderdiğinde ya da uygulama içinde başka bir etkileşimde bulunduğunda cihazına bildirim gönderebilmek için kullanılır; reklam ya da başka bir amaçla kullanılmaz. Bildirimleri kapatırsan ya da hesabını silersen bu jeton sunucudan kaldırılır.</li>
       </ul>
       <p><strong>Kesin konumun asla partnerine gösterilmez.</strong> Konum paylaşımını açtığında bile, hem sen hem partnerin paylaştıysa yalnızca ikiniz arasındaki hesaplanmış yaklaşık mesafe (km) partnerine gösterilir — kendi enlem/boylamın uygulamanın hiçbir ekranında, hiçbir API yanıtında partnerine ya da başka birine gönderilmez.</p>
 
@@ -116,6 +118,7 @@ router.get('/terms', (_req, res) => {
 
       <h2>Hesabın ve içeriğin</h2>
       <ul>
+        <li>${APP_NAME}, on sekiz (18) yaşından küçüklerin kullanımına yönelik değildir; hesap oluşturarak 18 yaşında veya üzerinde olduğunu beyan etmiş olursun.</li>
         <li>Hesap bilgilerinin doğruluğundan ve şifreni gizli tutmaktan sen sorumlusun.</li>
         <li>Uygulamaya eklediğin içerik (anılar, notlar, planlar) sana aittir; bunları istediğin zaman düzenleyebilir veya silebilirsin.</li>
         <li>Uygulamayı yasa dışı, zarar verici veya başkalarının haklarını ihlal edecek şekilde kullanmamayı kabul edersin.</li>
@@ -123,6 +126,16 @@ router.get('/terms', (_req, res) => {
 
       <h2>Hizmetin sunumu</h2>
       <p>${APP_NAME} küçük ölçekli, gelişmekte olan bir proje olarak sunulur ve "olduğu gibi" sağlanır; kesintisiz veya hatasız çalışacağına dair bir garanti verilmez. Ücretsiz barındırma katmanında zaman zaman geçici kesintiler (ör. yeniden başlatma sonrası kısa süreli erişilemezlik) yaşanabilir.</p>
+
+      <h2>Abonelik ve ücretlendirme</h2>
+      <ul>
+        <li>Çiftin eşleşmesiyle birlikte 7 günlük ücretsiz deneme süresi başlar; bu süre boyunca uygulamanın tüm özellikleri ödeme bilgisi girmeden kullanılabilir.</li>
+        <li>Deneme süresi dolduktan sonra uygulamanın devam eden kullanımı için aylık ya da yıllık abonelik satın alınması gerekir. Güncel fiyatlar, satın alma ekranında App Store/Google Play üzerinden görüntülenir ve satın almadan önce onayına sunulur.</li>
+        <li>Abonelik, iptal etmediğin sürece dönem sonunda otomatik olarak yenilenir ve ücret, seçili dönemin (aylık/yıllık) bitiminde satın alma işlemini yaptığın Apple ya da Google hesabından tahsil edilir.</li>
+        <li>Aboneliği istediğin zaman iptal edebilirsin; iptal, cihazının işletim sistemi ayarlarından (iOS: Ayarlar &gt; Apple ID &gt; Abonelikler, Android: Google Play &gt; Abonelikler) ya da uygulama içindeki "Aboneliği yönet" seçeneğinden yapılır. İptal, geçerli dönemin sonuna kadar erişimini etkilemez; yalnızca bir sonraki yenilemeyi durdurur.</li>
+        <li>Çift bazlı abonelik: aboneliği partnerlerden biri satın aldığında, ikisi de aynı çiftin abonelik durumunu paylaşır ve tam erişime sahip olur.</li>
+        <li>Abonelik satın alma işlemleri Apple App Store ya da Google Play üzerinden, RevenueCat aracılığıyla yürütülür; ödeme bilgilerin (kart numarası vb.) hiçbir zaman ${APP_NAME} sunucularına ulaşmaz.</li>
+      </ul>
 
       <h2>Sorumluluğun sınırlanması</h2>
       <p>${APP_NAME} ekibi, uygulamanın kullanımından doğabilecek dolaylı zararlardan yasaların izin verdiği azami ölçüde sorumlu tutulamaz.</p>
@@ -155,7 +168,7 @@ router.get('/data-deletion', (_req, res) => {
         <li>En altta yer alan <strong>"Hesabımı sil"</strong> butonuna dokun.</li>
         <li>Onaylayınca; ruh hâli geçmişin, gönderdiğin dokunuşlar, yazdığın anılar, günün sorusuna verdiğin cevaplar ve eklediğin plan/birikim katkıların dâhil hesabın ve tüm kişisel verilerin sunucudan kalıcı ve geri alınamaz şekilde silinir.</li>
       </ol>
-      <p>Bu işlem yalnızca kendi hesabını ve kendi eklediğin içerikleri siler; partnerinin hesabı etkilenmez.</p>
+      <p>Bu işlem yalnızca kendi hesabını ve kendi eklediğin içerikleri siler; partnerinin hesabı silinmez. Ancak eşleşmeniz sona erer: partnerin, aranızdaki paylaşılan anılara/planlara erişimini kaybeder ve dilediğinde yeni bir davet koduyla başka biriyle yeniden eşleşebilir.</p>
 
       <h2>Yalnızca konum verini silmek istiyorsan</h2>
       <p>Hesabının tamamını silmeden sadece konum paylaşımını kapatmak istersen, <strong>Biz</strong> sekmesindeki "Konum" satırına dokunup kapatabilirsin — bu, hem cihazındaki arka plan konum takibini durdurur hem de sunucudaki enlem/boylam kaydını hemen siler.</p>
@@ -167,6 +180,53 @@ router.get('/data-deletion', (_req, res) => {
       <p>Hesabına bir sebeple erişemiyorsan, hangi hesabın (kayıtlı e-posta adresin) silinmesini istediğini belirterek <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> adresine yazabilirsin; talebini elle işleme alıp verilerini sileriz.</p>
 
       <p>Daha fazla bilgi için <a href="/privacy">Gizlilik Politikası</a>'na bakabilirsin.</p>
+      `,
+    ),
+  );
+});
+
+// Google Play'in Nisan 2024'te genişlettiği CSAE (çocuğun cinsel istismarı ve
+// çocuk istismarı) politikası, kullanıcıların içerik oluşturup paylaşabildiği
+// ya da gerçek zamanlı iletişim kurabildiği tüm uygulamalardan, Play
+// Console > Uygulama içeriği > Çocuğun güvenliği bölümüne herkese açık,
+// kalıcı ve düzenlenemez bir "harici olarak yayınlanmış standartlar" bağlantısı
+// girmesini istiyor. ${APP_NAME}'de Anılar (fotoğraf/video/ses notu) ve Günün
+// Sorusu gibi kullanıcı içeriği paylaşma özellikleri olduğu için bu sayfa
+// gerekiyor -- içerik yalnızca eşleşmiş iki partner arasında paylaşılsa da
+// (herkese açık değil) politika bu ayrımı yapmıyor.
+router.get('/child-safety-standards', (_req, res) => {
+  res.type('html').send(
+    page(
+      'Çocuğun Cinsel İstismarına ve İstismarına Karşı Standartlarımız',
+      `
+      <p>${APP_NAME}, Google'ın Çocuğun Cinsel İstismarı ve İstismarı (CSAE) içeriğine karşı politikasını benimser ve bu tür içerik ile davranışlara karşı <strong>sıfır tolerans</strong> uygular. Bu sayfa, ${APP_NAME}'in bu konudaki standartlarını ve uygulama süreçlerini açıklar.</p>
+
+      <h2>Hizmetin kapsamı</h2>
+      <p>${APP_NAME}, birbiriyle bir davet kodu üzerinden eşleşmiş <strong>iki yetişkin partner</strong> arasında kullanılmak üzere tasarlanmıştır. Uygulama herkese açık bir sosyal ağ, arama motoru veya sohbet odası değildir: ruh hâli, "dokunma", anı (fotoğraf/video/ses notu), günün sorusu cevabı, plan ve birikim gibi tüm içerikler <strong>yalnızca eşleşmiş iki kişi arasında</strong>, üçüncü kişilerin erişemeyeceği şekilde paylaşılır. Uygulama, on sekiz (18) yaşından küçüklerin kullanımına yönelik değildir ve bu yaşın altındaki kişilerin hesap oluşturmasına izin verilmez.</p>
+
+      <h2>Yasak içerik ve davranışlar</h2>
+      <p>Aşağıdakiler dâhil (ancak bunlarla sınırlı olmaksızın) çocuğun cinsel istismarı veya istismarını konu alan, teşvik eden, öven ya da bu tür içeriğe yönlendiren her türlü materyal ve davranış kesinlikle yasaktır:</p>
+      <ul>
+        <li>Reşit olmayan bireylere ait cinselleştirilmiş görsel, video, ses veya yazılı içerik.</li>
+        <li>Bir reşit olmayanla cinsel amaçlı iletişim kurma girişimi (grooming) ya da bu yönde bir talep.</li>
+        <li>Çocuk istismarını normalleştiren, öven ya da bu tür içeriğe yönlendiren bağlantı, açıklama veya materyal paylaşımı.</li>
+      </ul>
+
+      <h2>Tespit, moderasyon ve müdahale</h2>
+      <ul>
+        <li>${APP_NAME}'de içerik yalnızca eşleşmiş iki partner arasında paylaşıldığından, kamuya açık bir "keşfet" veya "akış" özelliği bulunmaz; bu, kitlesel yayılım riskini yapısal olarak sınırlar.</li>
+        <li>Bu politikanın ihlal edildiğine dair bir ihbar aldığımızda ya da bizzat tespit ettiğimizde, ilgili içeriği derhâl inceler, gerekiyorsa kaldırır ve ilgili hesabı askıya alır ya da kalıcı olarak kapatırız.</li>
+        <li>İhbarlar en geç <strong>5 iş günü</strong> içinde değerlendirilir; açık ve ciddi ihlallerde müdahale çok daha hızlı gerçekleştirilir.</li>
+        <li>Yasal olarak gerekli olduğu ölçüde, tespit edilen CSAE içerik ve hesapları yetkili makamlara (ör. ulusal kolluk kuvvetleri, ilgili ülkelerde NCMEC/CyberTipline gibi mekanizmalar) bildirir ve soruşturmalarda işbirliği yaparız.</li>
+      </ul>
+
+      <h2>İhbar nasıl yapılır</h2>
+      <p>CSAE politikamızı ihlal ettiğini düşündüğün bir içerik, hesap ya da davranışla karşılaşırsan lütfen konu satırına "CSAE Bildirimi" yazarak <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> adresinden bize ulaş. Mümkünse ilgili hesabı (kayıtlı e-posta adresi) ve durumu kısaca açıklayan bir not ekle. İhbarını ciddiyetle ele alır ve gizli tutarız.</p>
+
+      <h2>Değişiklikler</h2>
+      <p>Bu standartlar zaman zaman güncellenebilir; güncel sürüm her zaman bu sayfada yayınlanır.</p>
+
+      <div class="note">Bu sayfa, Google Play'in CSAE politikası kapsamında istenen "harici olarak yayınlanmış standartlar" bağlantısı olarak hazırlanmıştır ve <a href="/terms">Kullanım Koşulları</a> ile <a href="/privacy">Gizlilik Politikası</a>'nı tamamlayıcı niteliktedir.</div>
       `,
     ),
   );

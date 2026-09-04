@@ -17,15 +17,40 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Clipboard from 'expo-clipboard';
+import Purchases from 'react-native-purchases';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
-import { api } from '../src/api/client';
+import { isRevenueCatConfigured } from '../src/subscriptions/purchases';
+import { api, API_URL } from '../src/api/client';
 import { Memory, MoodResponse, TouchesResponse } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 
 const colors = theme.colors;
+
+// Yasal sayfalar (Gizlilik/Koşullar/Çocuk Güvenliği Standartları) sunucuda
+// kök dizinde barındırılıyor (bkz. server/src/routes/legal.ts) -- API_URL
+// ".../api" ile bittiği için buradan çıkarıyoruz (Paywall.tsx'teki aynı
+// yardımcıyla birebir aynı mantık).
+const LEGAL_BASE_URL = API_URL.replace(/\/api\/?$/, '');
+
+// Play Store'un "çocuk güvenliği" politikası, kullanıcıların bu tür
+// endişelerini UYGULAMA İÇİNDEN bildirebileceği bir yol istiyor -- aşağıdaki
+// "Bir sorun bildir" satırı bu amaçla var (bkz. handleReportConcern).
+// Google'ın kendi rehberi e-posta/form üzerinden bildirimi yeterli kabul
+// ediyor, tek şart uygulamadan ayrılmadan (bir menüden) erişilebilir olması.
+const SUPPORT_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'seolen8@gmail.com';
+
+// bkz. ELe.tsx'teki aynı yardımcı: RoundIcon'un arka planı, ikonun kendi
+// rengiyle aynı katı tonda değil, o rengin soluk (alfa'lı) bir versiyonu
+// olmalı -- aksi halde ikon glifi kendi arka planıyla aynı renkte olduğu
+// için görünmez olur (bu ekrandaki TÜM RoundIcon kullanımlarını, "Hesabımı
+// sil"/"Çıkış yap" dahil, etkileyen bir hataydı).
+const alpha = (color: string, opacity: number) =>
+  `${color}${Math.round(opacity * 255)
+    .toString(16)
+    .padStart(2, '0')}`;
 
 type IconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
@@ -52,8 +77,12 @@ function RoundIcon({
   backgroundColor: string;
   size?: number;
 }) {
+  // Her çağıran yer backgroundColor'ı ikonla AYNI katı rengi veriyor
+  // (ör. backgroundColor={iconColor} color={iconColor}) -- bunu doğrudan
+  // arka plan yapmak ikonu kendi arka planında görünmez kılardı. Bunun
+  // yerine soluk (alfa'lı) bir daire üstünde katı renkli bir ikon gösteriyoruz.
   return (
-    <View style={[styles.roundIcon, { backgroundColor }]}>
+    <View style={[styles.roundIcon, { backgroundColor: alpha(backgroundColor, 0.15) }]}>
       <Icon name={name} size={size} color={color} />
     </View>
   );
@@ -138,9 +167,48 @@ function PrivacyRow({
   );
 }
 
+// PrivacyRow bir açma/kapama satırı (toggle-switch ikonu); bu ise düz bir
+// gezinme/bağlantı satırı olduğu için sağda toggle yerine ok (chevron)
+// gösteren ayrı, daha basit bir bileşen -- aynı satır görünümünü (privacyRow/
+// rowLabel stilleri) paylaşıyor ki "Yardım ve Güvenlik" kartı, hemen
+// üstündeki "Gizliliğiniz sizin elinizde" kartıyla görsel olarak tutarlı olsun.
+function LinkRow({
+  icon,
+  label,
+  color,
+  onPress,
+}: {
+  icon: IconName;
+  label: string;
+  color: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      style={styles.privacyRow}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View style={styles.rowLabel}>
+        <Icon name={icon} size={19} color={color} />
+        <Text style={styles.bodyText}>{label}</Text>
+      </View>
+      <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+    </Pressable>
+  );
+}
+
 function daysSince(dateStr?: string | null) {
   if (!dateStr) return 0;
-  const start = new Date(dateStr.replace(' ', 'T'));
+  // Sunucu created_at'i SQLite datetime('now') ile UTC olarak üretiyor,
+  // ancak "Z" son eki olmadan (bkz. server/src/db.ts) -- bu yüzden yalnızca
+  // boşluğu "T" yapmak yeterli değil, JS'in bunu YEREL saat sanmasını
+  // önlemek için sona "Z" de eklememiz gerekiyor. Aksi halde UTC'den uzak
+  // dilimlerdeki (ör. TRT +3) kullanıcılarda bu sayaç yanlış (özellikle gece
+  // yarısına yakın off-by-one) çıkıyordu.
+  const isoLike = dateStr.includes('T') ? dateStr : `${dateStr.replace(' ', 'T')}Z`;
+  const start = new Date(isoLike);
   const diff = Date.now() - start.getTime();
   return Math.max(0, Math.floor(diff / 86400000));
 }
@@ -154,6 +222,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     couple,
     logout,
     deleteAccount,
+    entitlement,
     distanceKm,
     locationSharedByMe,
     locationSharedByPartner,
@@ -172,6 +241,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
   const [mood, setMood] = useState<MoodResponse | null>(null);
   const [moodSubmitting, setMoodSubmitting] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const pickAndUploadAvatar = async () => {
     try {
@@ -277,9 +347,25 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
       );
       return;
     }
-    shareLocationNow().catch((e) => {
-      Alert.alert('Konum paylaşılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
-    });
+    // Açarken doğrudan art arda iki native izin diyaloğu (önce ön plan,
+    // hemen ardından "Her Zaman İzin Ver") tetiklenmeden ÖNCE ne için
+    // istendiğini açıklıyoruz -- bağlamsız art arda konum izni istekleri
+    // App Store/Play Store incelemesinde sık karşılaşılan bir ret nedeni.
+    Alert.alert(
+      'Konum paylaşımını aç',
+      'Aranızdaki yaklaşık mesafeyi göstermek için önce konum iznini, ardından uygulama kapalıyken de mesafeyi güncel tutabilmek için "Her Zaman İzin Ver" iznini isteyeceğiz. Kesin konumun partnerine hiçbir zaman gösterilmez, sadece hesaplanan mesafe paylaşılır.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Devam et',
+          onPress: () => {
+            shareLocationNow().catch((e) => {
+              Alert.alert('Konum paylaşılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
+            });
+          },
+        },
+      ],
+    );
   };
 
   const confirmDeleteAccount = () => {
@@ -302,6 +388,30 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
         },
       ],
     );
+  };
+
+  const openLegalPage = (path: string) => {
+    Linking.openURL(`${LEGAL_BASE_URL}${path}`).catch(() => {
+      Alert.alert('Açılamadı', 'Sayfa açılırken bir sorun oluştu. Lütfen tekrar dene.');
+    });
+  };
+
+  // Google Play'in çocuk güvenliği politikası, kullanıcıların bu tür
+  // endişelerini uygulamadan ayrılmadan bildirebileceği bir yol istiyor.
+  // E-posta istemcisini konu/gövde önceden doldurulmuş şekilde açmak bu
+  // şartı karşılıyor -- ayrıntı için Biz.tsx başındaki SUPPORT_EMAIL notuna
+  // bkz.
+  const handleReportConcern = () => {
+    const subject = encodeURIComponent('Çocuk Güvenliği Bildirimi');
+    const body = encodeURIComponent(
+      `Merhaba,\n\nBir çocuk güvenliği endişesini ya da uygulama içi başka bir sorunu bildirmek istiyorum.\n\nAyrıntılar:\n(Lütfen ilgili hesabı/kullanıcıyı ve durumu buraya yazın)\n\nHesap e-postam: ${user?.email ?? ''}`,
+    );
+    Linking.openURL(`mailto:${SUPPORT_EMAIL}?subject=${subject}&body=${body}`).catch(() => {
+      Alert.alert(
+        'E-posta uygulaması açılamadı',
+        `Lütfen doğrudan ${SUPPORT_EMAIL} adresine yazarak bildir.`,
+      );
+    });
   };
 
   const load = useCallback(async () => {
@@ -340,8 +450,34 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
 
   const copyInviteCode = async () => {
     if (!user?.inviteCode) return;
-    await Clipboard.setStringAsync(user.inviteCode);
-    Alert.alert('Kopyalandı', 'Davet kodun panoya kopyalandı.');
+    try {
+      await Clipboard.setStringAsync(user.inviteCode);
+      Alert.alert('Kopyalandı', 'Davet kodun panoya kopyalandı.');
+    } catch {
+      Alert.alert('Kopyalanamadı', 'Lütfen tekrar dene.');
+    }
+  };
+
+  const handleLogout = () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    logout()
+      .catch(() => {
+        Alert.alert('Çıkış yapılamadı', 'Lütfen tekrar dene.');
+      })
+      .finally(() => setLoggingOut(false));
+  };
+
+  const openManageSubscription = async () => {
+    if (!isRevenueCatConfigured()) {
+      Alert.alert('Kullanılamıyor', 'Abonelik yönetimi şu anda kullanılamıyor.');
+      return;
+    }
+    try {
+      await Purchases.showManageSubscriptions();
+    } catch {
+      Alert.alert('Açılamadı', 'Abonelik yönetim ekranı açılamadı. Cihazının mağaza uygulamasından da yönetebilirsin.');
+    }
   };
 
   return (
@@ -362,7 +498,12 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
               </Text>
               <Text style={styles.subtitle}>Birlikte kurduğunuz küçük dünya.</Text>
             </View>
-            <Pressable accessibilityLabel="Çıkış yap" style={styles.settingsButton} onPress={logout}>
+            <Pressable
+              accessibilityLabel="Çıkış yap"
+              style={styles.settingsButton}
+              onPress={handleLogout}
+              disabled={loggingOut}
+            >
               <Icon name="logout" size={22} color={colors.cardForeground} />
             </Pressable>
           </View>
@@ -405,6 +546,41 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
             </View>
           </View>
         </LinearGradient>
+
+        {entitlement && (
+          <View style={styles.card}>
+            <View style={styles.contentRow}>
+              <RoundIcon
+                name={entitlement.subscriptionActive ? 'crown' : 'clock-outline'}
+                color={entitlement.subscriptionActive ? colors.accent : colors.primary}
+                backgroundColor={entitlement.subscriptionActive ? colors.accent : colors.primary}
+                size={21}
+              />
+              <View style={styles.flex}>
+                <Text style={styles.eyebrow}>ABONELİK</Text>
+                <Text style={styles.cardTitle}>
+                  {entitlement.subscriptionActive
+                    ? 'Abonesin'
+                    : entitlement.trialing
+                      ? `Deneme süren: ${entitlement.trialDaysLeft} gün kaldı`
+                      : 'Deneme süren doldu'}
+                </Text>
+                <Text style={styles.caption}>
+                  {entitlement.subscriptionActive
+                    ? 'Sen ya da partnerin abone olduğu için ikiniz de tam erişime sahipsiniz.'
+                    : entitlement.trialing
+                      ? 'Ücretsiz deneme süren boyunca her şeye erişebilirsin.'
+                      : 'Devam etmek için abone olman gerekiyor.'}
+                </Text>
+              </View>
+            </View>
+            {entitlement.subscriptionActive && (
+              <Pressable style={styles.manageSubButton} onPress={openManageSubscription}>
+                <Text style={styles.manageSubText}>Aboneliği yönet</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -574,9 +750,56 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
           </View>
         </View>
 
-        <Pressable style={styles.logoutCard} onPress={logout}>
-          <RoundIcon name="logout" color={colors.destructive} backgroundColor={colors.destructive} size={19} />
-          <Text style={styles.logoutText}>Çıkış yap</Text>
+        <View style={styles.card}>
+          <View style={styles.contentRow}>
+            <RoundIcon name="lifebuoy" color={colors.primary} backgroundColor={colors.primary} size={21} />
+            <View>
+              <Text style={styles.cardTitle}>Yardım ve Güvenlik</Text>
+              <Text style={styles.caption}>Bir sorunu bize bildir, sözleşmelerimize göz at.</Text>
+            </View>
+          </View>
+
+          <View style={styles.privacyList}>
+            <LinkRow
+              icon="flag-outline"
+              label="Bir sorun bildir"
+              color={colors.destructive}
+              onPress={handleReportConcern}
+            />
+            <LinkRow
+              icon="shield-account-outline"
+              label="Çocuk Güvenliği Standartları"
+              color={colors.primary}
+              onPress={() => openLegalPage('/child-safety-standards')}
+            />
+            <LinkRow
+              icon="lock-outline"
+              label="Gizlilik Politikası"
+              color={colors.primary}
+              onPress={() => openLegalPage('/privacy')}
+            />
+            <LinkRow
+              icon="file-document-outline"
+              label="Kullanım Koşulları"
+              color={colors.primary}
+              onPress={() => openLegalPage('/terms')}
+            />
+          </View>
+        </View>
+
+        <Pressable
+          style={[styles.logoutCard, loggingOut && styles.deleteCardDisabled]}
+          onPress={handleLogout}
+          disabled={loggingOut}
+        >
+          {loggingOut ? (
+            <ActivityIndicator color={colors.destructive} />
+          ) : (
+            <>
+              <RoundIcon name="logout" color={colors.destructive} backgroundColor={colors.destructive} size={19} />
+              <Text style={styles.logoutText}>Çıkış yap</Text>
+            </>
+          )}
         </Pressable>
 
         <Pressable
@@ -894,6 +1117,20 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  manageSubButton: {
+    marginTop: 16,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 16,
+    backgroundColor: colors.muted,
+  },
+  manageSubText: {
+    color: colors.foreground,
+    fontFamily: theme.fonts.body,
+    fontSize: 12,
+    fontWeight: '800',
   },
   notice: {
     marginTop: 16,
