@@ -18,13 +18,16 @@ services:
     # better-sqlite3 gibi native (V8 ABI'sine bağlı) bağımlılıklar yüzünden
     # bilerek SABİT bir sürüm kullanılıyor. Eskiden buradaki tek kısıt
     # package.json'daki "engines.node": ">=20.11.0" idi (üst sınırsız); Render
-    # yeni bir Node sürümü sunmaya başladığında (ör. 26.x) bu aralığa uyduğu
-    # için sessizce ona geçti, ama önceki deploy'dan kalan node_modules
-    # cache'i eski Node'un ABI'siyle derlenmiş better-sqlite3 binary'sini
-    # içeriyordu -- "NODE_MODULE_VERSION uyuşmazlığı" hatasıyla açılışta
-    # çöktü. .node-version dosyası eklendikten sonra Render'da "Clear build
-    # cache & deploy" ile bir kere temiz bir deploy yapmak, eski cache'i
-    # tamamen atıp doğru sürüm için yeniden derlemesini/indirmesini sağlar.
+    # yeni bir Node sürümü sunmaya başladığında (ör. 26.x, sonra 24.x) bu
+    # aralığa uyduğu için sessizce ona geçti, ama Render'ın deploy'lar arası
+    # yeniden kullandığı node_modules cache'i ESKİ Node'un ABI'siyle
+    # derlenmiş better-sqlite3 binary'sini içeriyordu -- ".node-version"
+    # sabitlense bile cache paket sürümü değişmediği için "npm install"
+    # better-sqlite3'e dokunmuyor, dolayısıyla binary hep eski ABI'de
+    # kalıyordu ("NODE_MODULE_VERSION uyuşmazlığı" ile açılışta çöküyordu).
+    # Asıl kalıcı çözüm package.json'daki "postinstall": "npm rebuild
+    # better-sqlite3" -- bu, cache'ten ne gelirse gelsin her deploy'da
+    # native modülü OANKİ Node sürümüne göre yeniden derliyor.
     plan: free
     rootDir: server
     buildCommand: npm install && npm run build
