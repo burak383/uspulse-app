@@ -17,7 +17,12 @@
         "buildType": "apk"
       }
     },
-    "production": {}
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://uspulse-backend.onrender.com/api",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "50264949461-vj8hu4mrt4u22nknp6itm9jo5qmra2m1.apps.googleusercontent.com"
+      }
+    }
   },
   "submit": {
     "production": {}

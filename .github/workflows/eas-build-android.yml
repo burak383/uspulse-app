@@ -1,0 +1,45 @@
+name: EAS Build (Android)
+
+# Sadece elle tetiklenir -- push/PR'da otomatik ÇALIŞMAZ. Bunun nedeni EAS'in
+# ücretsiz build kotasının sınırlı olması: her push'ta otomatik build almak
+# bu kotayı hızla tüketir. Play Console'a yüklenecek bir .aab hazırlamaya
+# hazır olduğunda, GitHub reposunda "Actions" sekmesinden bu workflow'u
+# ("EAS Build (Android)") seçip "Run workflow" ile elle tetikle.
+#
+# Bu workflow SADECE build alır -- Play Console'a otomatik göndermez
+# (eas submit kullanmıyor). Build bitince EAS'in verdiği .aab indirme
+# linkini (hem bu Action'ın loglarında hem de expo.dev/accounts/.../builds
+# sayfasında görünür) indirip Play Console > Production/Test > "Yeni sürüm
+# oluştur" ekranından elle yüklemen gerekiyor.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: Build Android app bundle (production)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Repoyu çek
+        uses: actions/checkout@v4
+
+      - name: Node kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+
+      - name: EAS CLI kur ve giriş yap
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Bağımlılıkları kur
+        run: npm ci
+
+      - name: EAS üzerinde Android build al (production profili -> .aab)
+        run: eas build --platform android --profile production --non-interactive
