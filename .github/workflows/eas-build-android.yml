@@ -1,5 +1,5 @@
 name: EAS Build (Android)
-
+ 
 # Sadece elle tetiklenir -- push/PR'da otomatik ÇALIŞMAZ. Bunun nedeni EAS'in
 # ücretsiz build kotasının sınırlı olması: her push'ta otomatik build almak
 # bu kotayı hızla tüketir. Play Console'a yüklenecek bir .aab hazırlamaya
@@ -13,7 +13,7 @@ name: EAS Build (Android)
 # oluştur" ekranından elle yüklemen gerekiyor.
 on:
   workflow_dispatch: {}
-
+ 
 jobs:
   build:
     name: Build Android app bundle (production)
@@ -24,22 +24,28 @@ jobs:
     steps:
       - name: Repoyu çek
         uses: actions/checkout@v4
-
+ 
       - name: Node kur
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: mobile/package-lock.json
-
+ 
       - name: EAS CLI kur ve giriş yap
         uses: expo/expo-github-action@v8
         with:
           eas-version: latest
           token: ${{ secrets.EXPO_TOKEN }}
-
+          # Action'ın varsayılanı "yarn" -- bu repo yarn değil npm kullanıyor
+          # (yarn.lock yok, package-lock.json var) ve GitHub'ın runner'larında
+          # yarn'ın global kurulumu zaman zaman "exit code 1" ile başarısız
+          # oluyor (corepack/yarn sürüm uyuşmazlığı). npm'e sabitleyerek bu
+          # sorunu bypass ediyoruz.
+          packager: npm
+ 
       - name: Bağımlılıkları kur
         run: npm ci
-
+ 
       - name: EAS üzerinde Android build al (production profili -> .aab)
         run: eas build --platform android --profile production --non-interactive
