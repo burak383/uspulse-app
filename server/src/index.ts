@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { seedDemoData } from './seed';
 import legalRouter from './routes/legal';
+import downloadRouter from './routes/download';
 import authRouter from './routes/auth';
 import meRouter from './routes/me';
 import reunionRouter from './routes/reunion';
@@ -73,6 +74,10 @@ app.get('/api/health', (_req, res) => {
 // değil, kök yolda (ör. https://.../privacy) çünkü bunlar API uçları değil,
 // insan tarafından okunacak sayfalar.
 app.use('/', legalRouter);
+// Davet mesajındaki tek indirme linki (/get-app) -- cihaza göre Google
+// Play'e yönlendirir ya da iOS için "çok yakında" sayfası gösterir. bkz.
+// routes/download.ts ve mobile/screens/ELe.tsx (shareInvite).
+app.use('/', downloadRouter);
 
 app.use('/api/auth', authRouter);
 app.use('/api/me', meRouter);

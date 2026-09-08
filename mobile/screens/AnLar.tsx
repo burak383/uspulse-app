@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -30,9 +30,10 @@ import {
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { colors, fonts } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
-import { api, apiUpload } from '../src/api/client';
+import { api, apiUpload, appendMediaFile } from '../src/api/client';
 import { Memory } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
+import { confirmAsync, alertInfo } from '../src/utils/confirm';
 
 const alpha = (color: string, opacity: number) => {
   const value = Math.round(opacity * 255)
@@ -106,11 +107,11 @@ function ItemActions({
   );
 }
 
-function confirmDelete(itemLabel: string, onConfirm: () => void) {
-  Alert.alert('Silinsin mi?', `"${itemLabel}" kalıcı olarak silinecek.`, [
-    { text: 'Vazgeç', style: 'cancel' },
-    { text: 'Sil', style: 'destructive', onPress: onConfirm },
-  ]);
+// bkz. src/utils/confirm.ts -- web'de react-native-web'in Alert.alert()'ü
+// no-op olduğu için düz Alert.alert tabanlı bir onay burada hiç çalışmazdı.
+async function confirmDelete(itemLabel: string, onConfirm: () => void) {
+  const confirmed = await confirmAsync('Silinsin mi?', `"${itemLabel}" kalıcı olarak silinecek.`);
+  if (confirmed) onConfirm();
 }
 
 function Capsule({
@@ -235,6 +236,25 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
   const recorderState = useAudioRecorderState(recorder, 200);
   const previewPlayer = useAudioPlayer(recordedUri ?? undefined);
   const previewStatus = useAudioPlayerStatus(previewPlayer);
+
+  // expo-audio'nun varsayılan ses modunda shouldPlayInBackground false'tur --
+  // bir anıdaki ses notu oynatılırken uygulama arka plana alınırsa (ya da
+  // kilit ekranına geçilirse) çalma sessizce durur ve hiçbir medya
+  // bildirimi/kontrolü görünmez (Play Console'a FOREGROUND_SERVICE_
+  // MEDIA_PLAYBACK için beyan ettiğimiz davranış budur). setAudioModeAsync
+  // yalnızca burada belirtilen alanları günceller (diğerlerini olduğu gibi
+  // bırakır) -- bu yüzden startRecording()'in kendi çağrısı
+  // (allowsRecording: true) bunu SIFIRLAMAZ, ikisi güvenle bir arada durur.
+  useEffect(() => {
+    setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'duckOthers',
+    }).catch(() => {
+      // sessizce geç -- en kötü ihtimalle arka planda çalma/bildirim
+      // çalışmaz, ön planda oynatma yine de etkilenmez.
+    });
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -409,11 +429,7 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
         form.append('type', kind);
         form.append('title', title.trim());
         if (note.trim()) form.append('note', note.trim());
-        form.append('media', {
-          uri: media.uri,
-          name: media.fileName,
-          type: media.mimeType,
-        } as unknown as Blob);
+        await appendMediaFile(form, 'media', media);
         await apiUpload('/memories', form);
       } else {
         await api.post('/memories', {
@@ -426,7 +442,7 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
       setModalOpen(false);
       load();
     } catch (e) {
-      Alert.alert('Kaydedilemedi', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
+      alertInfo('Kaydedilemedi', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
     } finally {
       setSubmitting(false);
     }

@@ -26,6 +26,7 @@ import { isRevenueCatConfigured } from '../src/subscriptions/purchases';
 import { api, API_URL } from '../src/api/client';
 import { Memory, MoodResponse, TouchesResponse } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
+import { confirmAsync } from '../src/utils/confirm';
 
 const colors = theme.colors;
 
@@ -286,26 +287,30 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     }
   };
 
-  const removeAvatar = () => {
+  // NOT: Bu eskiden tek bir "Profil fotoğrafı" Alert.alert action sheet'i
+  // (Fotoğraf seç / Fotoğrafı kaldır / Vazgeç) ile açılıyordu, ama
+  // react-native-web'de Alert.alert tamamen no-op (bkz. src/utils/
+  // confirm.ts) -- yani web'de bu menü hiç açılmıyor, ne yeni fotoğraf
+  // seçilebiliyor ne de kaldırılabiliyordu. Onun yerine avatar artık her
+  // zaman doğrudan fotoğraf seçiyor, kaldırma ise ayrı küçük bir rozet
+  // (aşağıdaki JSX'te avatarRemoveBadge) + confirmAsync onayıyla yapılıyor
+  // -- hem web'de gerçekten çalışıyor hem de bir adım kısalmış oluyor.
+  const removeAvatar = async () => {
+    const confirmed = await confirmAsync(
+      'Fotoğrafı kaldır',
+      'Profil fotoğrafını kaldırmak istediğine emin misin?',
+      'Kaldır',
+    );
+    if (!confirmed) return;
     setAvatarUploading(true);
-    api
-      .delete('/me/avatar')
-      .then(() => refresh())
-      .catch(() => {
-        Alert.alert('Kaldırılamadı', 'Lütfen tekrar dene.');
-      })
-      .finally(() => setAvatarUploading(false));
-  };
-
-  const onAvatarPress = () => {
-    const options: { text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }[] = [
-      { text: 'Fotoğraf seç', onPress: pickAndUploadAvatar },
-    ];
-    if (user?.avatarUrl) {
-      options.push({ text: 'Fotoğrafı kaldır', style: 'destructive', onPress: removeAvatar });
+    try {
+      await api.delete('/me/avatar');
+      await refresh();
+    } catch {
+      Alert.alert('Kaldırılamadı', 'Lütfen tekrar dene.');
+    } finally {
+      setAvatarUploading(false);
     }
-    options.push({ text: 'Vazgeç', style: 'cancel' });
-    Alert.alert('Profil fotoğrafı', undefined, options);
   };
 
   const toggleHaptics = () => {
@@ -331,107 +336,74 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     }
   };
 
-  const toggleLocationSharing = () => {
+  const toggleLocationSharing = async () => {
     if (locationSharedByMe) {
-      Alert.alert(
+      const confirmed = await confirmAsync(
         'Konum paylaşımını kapat',
         'Kapatırsan aranızdaki mesafe artık gösterilmez ve arka plan konum takibi durur. Partnerinin konumu bu uygulamada zaten hiçbir zaman görünmüyor, sadece hesaplanan mesafe gösteriliyordu.',
-        [
-          { text: 'Vazgeç', style: 'cancel' },
-          {
-            text: 'Kapat',
-            style: 'destructive',
-            onPress: () => {
-              stopSharingLocation().catch(() => {
-                Alert.alert('Konum paylaşımı kapatılamadı', 'Lütfen tekrar dene.');
-              });
-            },
-          },
-        ],
+        'Kapat',
       );
+      if (!confirmed) return;
+      stopSharingLocation().catch(() => {
+        Alert.alert('Konum paylaşımı kapatılamadı', 'Lütfen tekrar dene.');
+      });
       return;
     }
     // Açarken doğrudan art arda iki native izin diyaloğu (önce ön plan,
     // hemen ardından "Her Zaman İzin Ver") tetiklenmeden ÖNCE ne için
     // istendiğini açıklıyoruz -- bağlamsız art arda konum izni istekleri
     // App Store/Play Store incelemesinde sık karşılaşılan bir ret nedeni.
-    Alert.alert(
+    const confirmed = await confirmAsync(
       'Konum paylaşımını aç',
       'Aranızdaki yaklaşık mesafeyi göstermek için önce konum iznini, ardından uygulama kapalıyken de mesafeyi güncel tutabilmek için "Her Zaman İzin Ver" iznini isteyeceğiz. Kesin konumun partnerine hiçbir zaman gösterilmez, sadece hesaplanan mesafe paylaşılır.',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Devam et',
-          onPress: () => {
-            shareLocationNow().catch((e) => {
-              Alert.alert('Konum paylaşılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
-            });
-          },
-        },
-      ],
+      'Devam et',
     );
+    if (!confirmed) return;
+    shareLocationNow().catch((e) => {
+      Alert.alert('Konum paylaşılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
+    });
   };
 
   // "Konum (yaklaşık mesafe için)" ayarının aksine bu, kesin konumu (anlık
   // hız + izlenen rota) partnerine CANLI gösteren bilinçli tek istisna --
   // bu yüzden hem açarken hem kapatırken ayrı, net bir onay metni var.
-  const toggleDrivingShare = () => {
+  const toggleDrivingShare = async () => {
     if (drivingShareEnabled) {
-      Alert.alert(
+      const confirmed = await confirmAsync(
         'Sürüş takibini kapat',
         'Kapatırsan sürüş halindeyken artık hızın ve rotan partnerine gösterilmez, aktif seyahatin hemen silinir.',
-        [
-          { text: 'Vazgeç', style: 'cancel' },
-          {
-            text: 'Kapat',
-            style: 'destructive',
-            onPress: () => {
-              disableDrivingShare().catch(() => {
-                Alert.alert('Sürüş takibi kapatılamadı', 'Lütfen tekrar dene.');
-              });
-            },
-          },
-        ],
+        'Kapat',
       );
+      if (!confirmed) return;
+      disableDrivingShare().catch(() => {
+        Alert.alert('Sürüş takibi kapatılamadı', 'Lütfen tekrar dene.');
+      });
       return;
     }
-    Alert.alert(
+    const confirmed = await confirmAsync(
       'Sürüş takibini aç',
       'Açarsan, otomobille sürüş halindeyken (hız belirli bir eşiğin üzerine çıktığında) anlık hızın ve izlediğin yol partnerine CANLI olarak gösterilir. Bu, uygulamanın geri kalanındaki "kesin konum asla gösterilmez" ilkesinin tek istisnasıdır -- sürüş bitince veri hemen silinir, geçmiş tutulmaz. Bunun için "Her Zaman İzin Ver" konum izni gerekecek.',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Devam et',
-          onPress: () => {
-            enableDrivingShare().catch((e) => {
-              Alert.alert('Sürüş takibi açılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
-            });
-          },
-        },
-      ],
+      'Devam et',
     );
+    if (!confirmed) return;
+    enableDrivingShare().catch((e) => {
+      Alert.alert('Sürüş takibi açılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
+    });
   };
 
-  const confirmDeleteAccount = () => {
-    Alert.alert(
+  const confirmDeleteAccount = async () => {
+    const confirmed = await confirmAsync(
       'Hesabını sil',
       'Bu işlem geri alınamaz: hesabın, ruh hâli/dokunuş geçmişin, yazdığın anılar ve eklediğin plan/birikim katkıların kalıcı olarak silinir. Partnerinin hesabı etkilenmez.',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Hesabımı sil',
-          style: 'destructive',
-          onPress: () => {
-            setDeleting(true);
-            deleteAccount()
-              .catch(() => {
-                Alert.alert('Hesap silinemedi', 'Lütfen tekrar dene.');
-              })
-              .finally(() => setDeleting(false));
-          },
-        },
-      ],
+      'Hesabımı sil',
     );
+    if (!confirmed) return;
+    setDeleting(true);
+    deleteAccount()
+      .catch(() => {
+        Alert.alert('Hesap silinemedi', 'Lütfen tekrar dene.');
+      })
+      .finally(() => setDeleting(false));
   };
 
   const openLegalPage = (path: string) => {
@@ -557,7 +529,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
               <Pressable
                 accessibilityLabel="Profil fotoğrafını değiştir"
                 style={[styles.avatar, styles.elifAvatar]}
-                onPress={onAvatarPress}
+                onPress={pickAndUploadAvatar}
                 disabled={avatarUploading}
               >
                 {avatarUploading ? (
@@ -570,6 +542,16 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
                 <View style={styles.avatarEditBadge}>
                   <Icon name="camera" size={13} color={colors.primaryForeground} />
                 </View>
+                {user?.avatarUrl && !avatarUploading && (
+                  <Pressable
+                    accessibilityLabel="Profil fotoğrafını kaldır"
+                    style={styles.avatarRemoveBadge}
+                    onPress={removeAvatar}
+                    hitSlop={6}
+                  >
+                    <Icon name="close" size={12} color={colors.primaryForeground} />
+                  </Pressable>
+                )}
               </Pressable>
               <View style={[styles.avatar, styles.denizAvatar]}>
                 {partner?.avatarUrl ? (
@@ -993,6 +975,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
+    borderWidth: 2,
+    borderColor: colors.card,
+  },
+  avatarRemoveBadge: {
+    position: 'absolute',
+    right: -2,
+    top: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.destructive,
     borderWidth: 2,
     borderColor: colors.card,
   },

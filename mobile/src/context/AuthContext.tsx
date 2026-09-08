@@ -60,6 +60,11 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
+  // Başka bir cihazda zaten kayıtlı olduğun hesabına, e-posta/şifre girmeden
+  // -- yalnızca o cihazdan (Biz.tsx "Davetini paylaş" kartından) kendine
+  // gönderdiğin davet kodunu girerek -- yeniden bağlanmak için. bkz. server/
+  // src/routes/auth.ts POST /auth/reconnect.
+  reconnectWithCode: (code: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<ForgotPasswordResponse>;
   resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
   pair: (code: string) => Promise<void>;
@@ -580,6 +585,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [handleAuthResponse, refresh],
   );
 
+  const reconnectWithCode = useCallback(
+    async (code: string) => {
+      setError(null);
+      try {
+        const res = await api.post<AuthResponse>('/auth/reconnect', { code: code.trim().toUpperCase() });
+        await handleAuthResponse(res);
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Bu kodla bağlanılamadı.');
+        throw e;
+      }
+    },
+    [handleAuthResponse, refresh],
+  );
+
   const forgotPassword = useCallback(async (email: string) => {
     setError(null);
     try {
@@ -739,6 +759,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       register,
       loginWithGoogle,
+      reconnectWithCode,
       forgotPassword,
       resetPassword,
       pair,
@@ -776,6 +797,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       register,
       loginWithGoogle,
+      reconnectWithCode,
       forgotPassword,
       resetPassword,
       pair,

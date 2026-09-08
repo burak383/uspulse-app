@@ -48,6 +48,7 @@ export default function AuthScreen() {
     login,
     register,
     loginWithGoogle,
+    reconnectWithCode,
     forgotPassword,
     resetPassword,
     error,
@@ -74,6 +75,15 @@ export default function AuthScreen() {
   const [forgotSubmitting, setForgotSubmitting] = useState(false);
   const [forgotMessage, setForgotMessage] = useState<string | null>(null);
   const [forgotError, setForgotError] = useState<string | null>(null);
+
+  // "Kodla bağlan": zaten bir hesabın varsa, başka bir cihazda oturum
+  // açıkken Biz.tsx > "Davetini paylaş" kartından kendine gönderdiğin davet
+  // kodunu buraya girerek -- e-posta/şifreyi hatırlamana gerek kalmadan --
+  // aynı hesaba bu cihazdan da giriş yapabilirsin.
+  const [reconnectOpen, setReconnectOpen] = useState(false);
+  const [reconnectCode, setReconnectCode] = useState('');
+  const [reconnectSubmitting, setReconnectSubmitting] = useState(false);
+  const [reconnectError, setReconnectError] = useState<string | null>(null);
 
   // Google auth request is created unconditionally (the hook can't be
   // called conditionally); an undefined clientId for a platform just means
@@ -184,6 +194,29 @@ export default function AuthScreen() {
   };
 
   const closeForgotPassword = () => setForgotOpen(false);
+
+  const openReconnect = () => {
+    clearError();
+    setReconnectCode('');
+    setReconnectError(null);
+    setReconnectOpen(true);
+  };
+
+  const closeReconnect = () => setReconnectOpen(false);
+
+  const submitReconnect = async () => {
+    if (!reconnectCode.trim()) return;
+    setReconnectSubmitting(true);
+    setReconnectError(null);
+    try {
+      await reconnectWithCode(reconnectCode.trim());
+      setReconnectOpen(false);
+    } catch (e) {
+      setReconnectError(e instanceof Error ? e.message : 'Bu kodla bağlanılamadı.');
+    } finally {
+      setReconnectSubmitting(false);
+    }
+  };
 
   const submitForgotRequest = async () => {
     if (!forgotEmail.trim()) return;
@@ -365,6 +398,11 @@ export default function AuthScreen() {
               </Pressable>
             )}
 
+            <Pressable onPress={openReconnect} style={styles.demoButton}>
+              <MaterialCommunityIcons name="cellphone-link" size={16} color={colors.primary} />
+              <Text style={styles.demoText}>Bir bağlantı kodun mu var? Kodla bağlan</Text>
+            </Pressable>
+
             <Pressable onPress={fillDemo} style={styles.demoButton}>
               <MaterialCommunityIcons name="account-heart-outline" size={16} color={colors.primary} />
               <Text style={styles.demoText}>Demo hesabıyla dene (Elif)</Text>
@@ -458,6 +496,53 @@ export default function AuthScreen() {
                 </View>
               </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={reconnectOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closeReconnect}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Kodla bağlan</Text>
+            <Text style={styles.modalHint}>
+              Başka bir cihazda oturum açıkken Biz sekmesindeki "Davetini paylaş" kartından kendine gönderdiğin
+              davet kodunu gir -- e-posta/şifre girmeden aynı hesabına bu cihazdan da bağlanırsın.
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={reconnectCode}
+              onChangeText={(value) => {
+                setReconnectCode(value.toUpperCase());
+                if (reconnectError) setReconnectError(null);
+              }}
+              placeholder="Örn. AB12CD"
+              placeholderTextColor={colors.mutedForeground}
+              autoCapitalize="characters"
+              maxLength={8}
+              autoFocus
+            />
+            {reconnectError && <Text style={styles.errorText}>{reconnectError}</Text>}
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancel} onPress={closeReconnect}>
+                <Text style={styles.modalCancelText}>Vazgeç</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirm, reconnectSubmitting && styles.submitButtonDisabled]}
+                onPress={submitReconnect}
+                disabled={reconnectSubmitting || !reconnectCode.trim()}
+              >
+                {reconnectSubmitting ? (
+                  <ActivityIndicator color={colors.primaryForeground} />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Bağlan</Text>
+                )}
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>

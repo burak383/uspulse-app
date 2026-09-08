@@ -1,4 +1,5 @@
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 const configuredUrl =
   process.env.EXPO_PUBLIC_API_URL ||
@@ -131,4 +132,40 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
     handleErrorResponse(res.status, data, `Yükleme başarısız oldu (${res.status}).`);
   }
   return data as T;
+}
+
+/**
+ * bir `uri`den gelen medyayı (fotoğraf/video/ses) FormData'ya EKLEYEN
+ * platforma göre değişen tek nokta. Native'de (iOS/Android) React Native'in
+ * kendi FormData'sı `{ uri, name, type }` şeklindeki düz bir nesneyi gerçek
+ * bir multipart dosya parçasına çeviriyor -- bu, Expo/RN'in belgelenen
+ * standart deseni ve native'de sorunsuz çalışıyor.
+ *
+ * WEB'de ise `FormData`, tarayıcının kendi implementasyonu ve o SADECE
+ * Blob/File kabul ediyor -- Blob/File OLMAYAN bir değer verilince (bkz.
+ * WHATWG FormData spesifikasyonu) sessizce `String(value)` ile
+ * "[object Object]" metnine çevriliyor. Yani `{uri,name,type}` nesnesi
+ * hiçbir zaman gerçek bir dosya olarak gitmiyor -- sunucudaki multer
+ * "media" alanını hiç bulamıyor, istek reddediliyor (ya da anlamsız bir
+ * hata dönüyor) ve kullanıcı "Kaydet"e basınca (Anılar sekmesinde
+ * fotoğraf/video/ses eklerken) sanki hiçbir şey olmamış gibi görünüyordu.
+ * Bunu telafi etmek için web'de URI'yi gerçek bir Blob'a çevirip onu
+ * ekliyoruz.
+ */
+export async function appendMediaFile(
+  form: FormData,
+  field: string,
+  media: { uri: string; fileName: string; mimeType: string },
+): Promise<void> {
+  if (Platform.OS === 'web') {
+    const response = await fetch(media.uri);
+    const blob = await response.blob();
+    form.append(field, blob, media.fileName);
+    return;
+  }
+  form.append(field, {
+    uri: media.uri,
+    name: media.fileName,
+    type: media.mimeType,
+  } as unknown as Blob);
 }

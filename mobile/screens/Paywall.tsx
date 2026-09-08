@@ -17,6 +17,7 @@ import { theme } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 import { isRevenueCatConfigured } from '../src/subscriptions/purchases';
 import { API_URL } from '../src/api/client';
+import { confirmAsync } from '../src/utils/confirm';
 
 const colors = theme.colors;
 
@@ -127,25 +128,18 @@ export default function PaywallScreen() {
 
   const trialExpired = entitlement && !entitlement.trialing && !entitlement.subscriptionActive;
 
-  const confirmDeleteAccount = () => {
-    Alert.alert(
+  const confirmDeleteAccount = async () => {
+    const confirmed = await confirmAsync(
       'Hesabını sil',
       'Devam etmek istemiyorsan hesabını buradan da silebilirsin. Bu işlem geri alınamaz: hesabın ve tüm kişisel verilerin kalıcı olarak silinir. Partnerinin hesabı etkilenmez.',
-      [
-        { text: 'Vazgeç', style: 'cancel' },
-        {
-          text: 'Hesabımı sil',
-          style: 'destructive',
-          onPress: () => {
-            setDeleting(true);
-            deleteAccount().catch(() => {
-              Alert.alert('Hesap silinemedi', 'Lütfen tekrar dene.');
-              setDeleting(false);
-            });
-          },
-        },
-      ],
+      'Hesabımı sil',
     );
+    if (!confirmed) return;
+    setDeleting(true);
+    deleteAccount().catch(() => {
+      Alert.alert('Hesap silinemedi', 'Lütfen tekrar dene.');
+      setDeleting(false);
+    });
   };
 
   return (

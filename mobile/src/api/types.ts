@@ -155,6 +155,7 @@ export type NotificationType =
   | 'plan_done'
   | 'savings_goal'
   | 'savings_contribution'
+  | 'savings_withdrawal'
   | 'question_answer'
   | 'reunion_update';
 

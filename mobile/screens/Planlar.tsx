@@ -20,6 +20,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api/client';
 import { PlanItem, SavingsGoal } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
+import { confirmAsync } from '../src/utils/confirm';
 
 const kasImage =
   'https://fwtngjyirchhhysukjxi.supabase.co/storage/v1/object/public/project-images/d8f99d97-2440-4f3a-addf-6eb2753287e6/cc97ef26-ea3b-42b7-89fc-3c5dbbec74d9.png';
@@ -122,11 +123,12 @@ const WishlistCard = ({
 type PlanCategory = PlanItem['category'];
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
-function confirmDelete(itemLabel: string, onConfirm: () => void) {
-  Alert.alert('Silinsin mi?', `"${itemLabel}" kalıcı olarak silinecek.`, [
-    { text: 'Vazgeç', style: 'cancel' },
-    { text: 'Sil', style: 'destructive', onPress: onConfirm },
-  ]);
+// bkz. src/utils/confirm.ts -- web'de react-native-web'in Alert.alert()'ü
+// no-op olduğu için düz Alert.alert tabanlı bir onay burada hiç çalışmazdı
+// (plan/birikim/katkı silme butonlarına basınca hiçbir şey olmuyordu).
+async function confirmDelete(itemLabel: string, onConfirm: () => void) {
+  const confirmed = await confirmAsync('Silinsin mi?', `"${itemLabel}" kalıcı olarak silinecek.`);
+  if (confirmed) onConfirm();
 }
 
 function reunionCountdown(dateStr: string | null | undefined) {
@@ -151,6 +153,10 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
 
   const [contributeGoal, setContributeGoal] = useState<SavingsGoal | null>(null);
   const [contributeAmount, setContributeAmount] = useState('100');
+  // Aynı modal hem "Para ekle" hem "Para çıkar" için kullanılıyor -- ikisi
+  // arasındaki tek fark gönderilen `type` ve başlık/buton metinleri (bkz.
+  // openContribute/submitContribute).
+  const [contributeType, setContributeType] = useState<'add' | 'withdraw'>('add');
 
   const [editGoal, setEditGoal] = useState<SavingsGoal | null>(null);
   const [goalTitle, setGoalTitle] = useState('');
@@ -268,8 +274,9 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
     });
   };
 
-  const openContribute = (goal: SavingsGoal) => {
+  const openContribute = (goal: SavingsGoal, type: 'add' | 'withdraw' = 'add') => {
     setContributeGoal(goal);
+    setContributeType(type);
     setContributeAmount('100');
   };
 
@@ -278,11 +285,14 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
     if (!contributeGoal || !Number.isFinite(amount) || amount <= 0 || submitting) return;
     setSubmitting(true);
     try {
-      await api.post(`/savings/${contributeGoal.id}/contribute`, { amount });
+      await api.post(`/savings/${contributeGoal.id}/contribute`, { amount, type: contributeType });
       setContributeGoal(null);
       load();
-    } catch {
-      Alert.alert('Eklenemedi', 'Lütfen tekrar dene.');
+    } catch (e) {
+      Alert.alert(
+        contributeType === 'withdraw' ? 'Para çekilemedi' : 'Eklenemedi',
+        e instanceof Error ? e.message : 'Lütfen tekrar dene.',
+      );
     } finally {
       setSubmitting(false);
     }
@@ -558,34 +568,53 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
 
                 {goal.contributions.length > 0 && (
                   <View style={styles.contributionList}>
-                    {goal.contributions.slice(0, 4).map((c) => (
-                      <View key={c.id} style={styles.contributionItem}>
-                        <Text style={styles.smallMuted}>
-                          {c.userName}, {c.amount.toLocaleString('tr-TR')} TL
-                        </Text>
-                        <Pressable
-                          accessibilityLabel="Katkıyı sil"
-                          onPress={() => deleteContribution(goal, c.id, `${c.userName} - ${c.amount} TL`)}
-                          hitSlop={8}
-                        >
-                          <Icon name="close" size={14} color={colors.mutedForeground} />
-                        </Pressable>
-                      </View>
-                    ))}
+                    {goal.contributions.slice(0, 4).map((c) => {
+                      const isWithdrawal = c.amount < 0;
+                      return (
+                        <View key={c.id} style={styles.contributionItem}>
+                          <Text style={[styles.smallMuted, isWithdrawal && styles.withdrawalText]}>
+                            {c.userName} {isWithdrawal ? 'çekti' : 'ekledi'}: {Math.abs(c.amount).toLocaleString('tr-TR')} TL
+                          </Text>
+                          <Pressable
+                            accessibilityLabel={isWithdrawal ? 'Çekimi sil' : 'Katkıyı sil'}
+                            onPress={() =>
+                              deleteContribution(
+                                goal,
+                                c.id,
+                                `${c.userName} ${isWithdrawal ? 'çekti' : 'ekledi'} - ${Math.abs(c.amount)} TL`,
+                              )
+                            }
+                            hitSlop={8}
+                          >
+                            <Icon name="close" size={14} color={colors.mutedForeground} />
+                          </Pressable>
+                        </View>
+                      );
+                    })}
                   </View>
                 )}
 
                 <View style={styles.contributionRow}>
-                  <Text style={styles.smallMuted}>
-                    {goal.contributions.length === 0 ? 'Henüz katkı yok' : ' '}
+                  <Text style={[styles.smallMuted, styles.contributionRowHint]}>
+                    {goal.contributions.length === 0 ? 'Henüz katkı yok' : ''}
                   </Text>
-                  <PillButton
-                    color={colors.accent}
-                    textColor={colors.accentForeground}
-                    onPress={() => openContribute(goal)}
-                  >
-                    Para Ekle
-                  </PillButton>
+                  <View style={styles.contributionButtons}>
+                    <PillButton
+                      color={colors.secondary}
+                      textColor={colors.foreground}
+                      onPress={() => openContribute(goal, 'withdraw')}
+                      disabled={goal.savedAmount <= 0}
+                    >
+                      Para Çıkar
+                    </PillButton>
+                    <PillButton
+                      color={colors.accent}
+                      textColor={colors.accentForeground}
+                      onPress={() => openContribute(goal, 'add')}
+                    >
+                      Para Ekle
+                    </PillButton>
+                  </View>
                 </View>
               </View>
               <Image source={{ uri: kasImage }} style={styles.savingsImage} />
@@ -664,7 +693,14 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
       <Modal visible={contributeGoal !== null} transparent animationType="fade" onRequestClose={() => setContributeGoal(null)}>
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>{contributeGoal?.title} için katkı</Text>
+            <Text style={styles.modalTitle}>
+              {contributeGoal?.title} için {contributeType === 'withdraw' ? 'para çek' : 'katkı'}
+            </Text>
+            {contributeType === 'withdraw' && (
+              <Text style={styles.modalHint}>
+                Mevcut birikim: {(contributeGoal?.savedAmount ?? 0).toLocaleString('tr-TR')} TL
+              </Text>
+            )}
             <TextInput
               value={contributeAmount}
               onChangeText={setContributeAmount}
@@ -678,8 +714,12 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
               <Pressable style={styles.modalCancel} onPress={() => setContributeGoal(null)}>
                 <Text style={styles.modalCancelText}>Vazgeç</Text>
               </Pressable>
-              <Pressable style={styles.modalConfirm} onPress={submitContribute} disabled={submitting}>
-                <Text style={styles.modalConfirmText}>Ekle</Text>
+              <Pressable
+                style={[styles.modalConfirm, contributeType === 'withdraw' && styles.modalConfirmDestructive]}
+                onPress={submitContribute}
+                disabled={submitting}
+              >
+                <Text style={styles.modalConfirmText}>{contributeType === 'withdraw' ? 'Çek' : 'Ekle'}</Text>
               </Pressable>
             </View>
           </View>
@@ -934,7 +974,10 @@ const styles = StyleSheet.create({
   savingsProgress: { height: '100%', backgroundColor: colors.accent },
   contributionList: { marginTop: 14, gap: 6 },
   contributionItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  withdrawalText: { color: colors.destructive },
   contributionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 19 },
+  contributionRowHint: { flex: 1 },
+  contributionButtons: { flexDirection: 'row', gap: 8 },
   savingsImage: { width: '100%', height: 112 },
   addGoalCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 54, borderRadius: 20, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.accent, backgroundColor: 'transparent' },
   addGoalText: { color: colors.accent, fontFamily: fonts.body, fontSize: 13, fontWeight: '800' },
@@ -946,11 +989,13 @@ const styles = StyleSheet.create({
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: 24 },
   modalCard: { width: '100%', maxWidth: 360, padding: 20, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, gap: 12 },
   modalTitle: { color: colors.foreground, fontFamily: fonts.heading, fontSize: 19 },
+  modalHint: { color: colors.mutedForeground, fontFamily: fonts.body, fontSize: 12, lineHeight: 18, marginTop: -6 },
   modalInput: { minHeight: 46, paddingHorizontal: 14, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.input, color: colors.foreground, fontFamily: fonts.body, fontSize: 14 },
   modalActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
   modalCancel: { flex: 1, minHeight: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.secondary },
   modalCancelText: { color: colors.secondaryForeground, fontFamily: fonts.body, fontSize: 13, fontWeight: '800' },
   modalConfirm: { flex: 1, minHeight: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary },
+  modalConfirmDestructive: { backgroundColor: colors.destructive },
   modalConfirmText: { color: colors.primaryForeground, fontFamily: fonts.body, fontSize: 13, fontWeight: '800' },
   modalDelete: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8 },
   modalDeleteText: { color: colors.destructive, fontFamily: fonts.body, fontSize: 12, fontWeight: '800' },

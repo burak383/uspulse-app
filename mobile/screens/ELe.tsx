@@ -16,6 +16,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, FontAwesome, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fonts } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
+import { API_URL } from '../src/api/client';
+
+// Davet mesajındaki indirme linki: API_URL sonundaki "/api"yi atıp
+// sunucudaki /get-app rotasına yönleniyoruz (bkz. server/src/routes/
+// download.ts) -- o rota, linki açan kişinin cihazına (Android/iOS) göre
+// otomatik olarak doğru mağazaya yönlendiriyor.
+const APP_DOWNLOAD_URL = `${API_URL.replace(/\/api\/?$/, '')}/get-app`;
 
 const imageUrl =
   'https://fwtngjyirchhhysukjxi.supabase.co/storage/v1/object/public/project-images/d8f99d97-2440-4f3a-addf-6eb2753287e6/c631128b-dade-440b-91d4-bd1581192882.png';
@@ -87,7 +94,7 @@ export default function MatchScreen() {
   const shareInvite = async () => {
     try {
       await Share.share({
-        message: `UsPulse'de sana küçük anlar bırakmak istiyorum. Davet kodum: ${inviteCode}`,
+        message: `UsPulse'de sana küçük anlar bırakmak istiyorum. Davet kodum: ${inviteCode}\n\nUygulamayı indir: ${APP_DOWNLOAD_URL}`,
       });
     } catch {
       // sharing cancelled - nothing to do

@@ -272,6 +272,39 @@ router.post('/google', async (req, res) => {
   }
 });
 
+// Bir cihazda oturum açıkken (bkz. Biz.tsx "Davetini paylaş" kartı) kendi
+// davet kodunu WhatsApp/SMS ile kendine ya da yeni cihazına gönderip, o
+// cihazda e-posta/şifre girmeden bu kodla tekrar giriş yapabilmen için.
+// requireAuth YOK -- bu uçun asıl amacı zaten oturumu OLMAYAN bir cihazda
+// çalışmak. Bu yüzden kod tek başına bir kimlik doğrulama bilgisi hâline
+// geliyor: 6 haneli kod (aşağı yukarı 36^6 olasılık) bir şifreden çok daha
+// zayıf olduğu için IP başına sıkı bir deneme sınırı şart -- aksi hâlde kod
+// alanı brute-force ile taranıp rastgele bir hesaba giriş yapılabilir.
+router.post('/reconnect', (req, res) => {
+  const { code } = req.body ?? {};
+  if (!code) {
+    return res.status(400).json({ error: 'Kod gerekli.' });
+  }
+
+  // 15 dakikalık pencerede IP başına en fazla 8 deneme -- reset-password
+  // uçundaki aynı korumayla tutarlı (yorum orada da açıklanıyor).
+  const ip = req.ip || 'unknown';
+  if (!checkRateLimit(`reconnect:${ip}`, 8, 15 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Çok fazla hatalı deneme. Lütfen bir süre sonra tekrar dene.' });
+  }
+
+  const row: any = db
+    .prepare('SELECT * FROM users WHERE invite_code = ?')
+    .get(String(code).toUpperCase().trim());
+
+  if (!row) {
+    return res.status(404).json({ error: 'Bu kod geçerli değil.' });
+  }
+
+  const token = signToken(row.id);
+  res.json({ token, user: publicUser(row) });
+});
+
 router.post('/pair', requireAuth, (req, res) => {
   const { code } = req.body ?? {};
   if (!code) {

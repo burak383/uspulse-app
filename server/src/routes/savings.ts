@@ -20,11 +20,17 @@ function serializeGoal(goal: any) {
        WHERE c.goal_id = ? ORDER BY c.created_at DESC`,
     )
     .all(goal.id) as any[];
+  // "Para çıkar" bir katkı satırı olarak, negatif amount ile tutuluyor (bkz.
+  // POST /:id/contribute) -- bu yüzden toplam hem ekleme hem çekmeleri
+  // otomatik yansıtıyor. progress'i 0'ın altına düşürmüyoruz (negatif
+  // genişlikte bir ilerleme çubuğu istemci tarafında anlamsız olurdu) --
+  // zaten çekme uçları toplamı 0'ın altına düşürmeyecek şekilde
+  // sınırlandırılıyor, buradaki Math.max sadece ek bir güvenlik ağı.
   const saved = contributions.reduce((sum, c) => sum + c.amount, 0);
   return {
     ...goal,
     savedAmount: saved,
-    progress: goal.target_amount > 0 ? Math.min(1, saved / goal.target_amount) : 0,
+    progress: goal.target_amount > 0 ? Math.max(0, Math.min(1, saved / goal.target_amount)) : 0,
     contributions,
   };
 }
@@ -65,8 +71,14 @@ router.post('/', rateLimitPerUser('savings-goal', 10, 60 * 1000), (req, res) => 
   });
 });
 
+// "Para ekle" ve "Para çıkar" aynı uçtan yönetiliyor: `type: 'withdraw'`
+// gönderilirse tutar negatif olarak kaydediliyor. Böylece hem toplam
+// (serializeGoal'daki basit toplama) hem de katkı geçmişi (kim ne zaman ne
+// kadar ekledi/çekti) tek bir tabloda, ekstra bir migration'a gerek
+// kalmadan doğru şekilde tutulmuş oluyor.
 router.post('/:id/contribute', rateLimitPerUser('savings-contribute', 20, 60 * 1000), (req, res) => {
-  const { amount, note } = req.body ?? {};
+  const { amount, note, type } = req.body ?? {};
+  const isWithdrawal = type === 'withdraw';
   if (!amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
     return res.status(400).json({ error: 'Geçerli bir tutar gerekli.' });
   }
@@ -78,18 +90,37 @@ router.post('/:id/contribute', rateLimitPerUser('savings-contribute', 20, 60 * 1
     .get(req.params.id, req.user!.coupleId);
   if (!goal) return res.status(404).json({ error: 'Bulunamadı.' });
 
+  const requestedAmount = Number(amount);
+
+  if (isWithdrawal) {
+    // Olmayan parayı çekmeyi engelle -- toplamın 0'ın altına düşmesine izin
+    // vermiyoruz.
+    const currentSaved = (
+      db
+        .prepare('SELECT COALESCE(SUM(amount), 0) as total FROM savings_contributions WHERE goal_id = ?')
+        .get(goal.id) as { total: number }
+    ).total;
+    if (requestedAmount > currentSaved) {
+      return res.status(400).json({ error: `En fazla ${currentSaved} TL çekebilirsin.` });
+    }
+  }
+
+  const signedAmount = isWithdrawal ? -requestedAmount : requestedAmount;
+
   db.prepare(
     `INSERT INTO savings_contributions (id, goal_id, user_id, amount, note) VALUES (?, ?, ?, ?, ?)`,
-  ).run(newId(), goal.id, req.user!.id, Number(amount), note ?? null);
+  ).run(newId(), goal.id, req.user!.id, signedAmount, note ?? null);
 
   res.status(201).json(serializeGoal(goal));
 
   notifyPartner({
     coupleId: req.user!.coupleId!,
     actorId: req.user!.id,
-    type: 'savings_contribution',
-    title: `${req.user!.name} birikime katkı yaptı`,
-    body: `"${goal.title}" hedefine ${Number(amount)} eklendi 💰`,
+    type: isWithdrawal ? 'savings_withdrawal' : 'savings_contribution',
+    title: isWithdrawal ? `${req.user!.name} birikimden para çekti` : `${req.user!.name} birikime katkı yaptı`,
+    body: isWithdrawal
+      ? `"${goal.title}" hedefinden ${requestedAmount} çekildi 💸`
+      : `"${goal.title}" hedefine ${requestedAmount} eklendi 💰`,
   });
 });
 
