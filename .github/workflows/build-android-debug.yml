@@ -1,0 +1,71 @@
+name: Android Debug APK derle
+ 
+# EAS'ın bulut build kotasına/hesap kurulumuna bağlı kalmadan, tamamen
+# ücretsiz bir GitHub Actions Linux runner'ında native Android projesini
+# üretip (expo prebuild -- bu proje "managed" workflow olduğu için android/
+# klasörü repoda yok, her seferinde burada üretiliyor) Gradle ile debug APK
+# derler. Bu APK, kendi telefonuna kurup test etmek / ekran görüntüsü almak
+# için yeterli -- ama debug keystore ile imzalı olduğundan Play Store'a
+# YÜKLENEMEZ. Gerçek mağaza gönderimi için hâlâ "EAS Build (Android)"
+# workflow'u (eas-build-android.yml, `eas build --profile production`)
+# gerekiyor -- bu ikisi birbirini TAMAMLIYOR, biri yerine geçmiyor:
+#   - build-android-debug.yml  -> hızlı, ücretsiz, sadece test amaçlı APK
+#   - eas-build-android.yml    -> Play Store'a yüklenebilir imzalı .aab
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'mobile/**'
+      - '.github/workflows/build-android-debug.yml'
+ 
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      # mobile/.env'deki (git'e gitmeyen) gerçek değerlerle aynı -- bu
+      # değerler gizli değil (API adresi herkese açık, Google Android
+      # client ID uygulamanın içine zaten gömülen genel bir kimlik), o
+      # yüzden burada düz yazmak güvenli.
+      EXPO_PUBLIC_API_URL: https://uspulse-backend.onrender.com/api
+      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: 50264949461-vj8hu4mrt4u22nknp6itm9jo5qmra2m1.apps.googleusercontent.com
+ 
+    steps:
+      - name: Kodu çek
+        uses: actions/checkout@v4
+ 
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+ 
+      - name: Bağımlılıkları kur
+        working-directory: mobile
+        run: npm ci
+ 
+      - name: JDK 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+ 
+      - name: Native Android projesini oluştur (expo prebuild)
+        working-directory: mobile
+        run: npx expo prebuild --platform android --no-install
+ 
+      - name: gradlew'i çalıştırılabilir yap
+        run: chmod +x mobile/android/gradlew
+ 
+      - name: Debug APK derle
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+ 
+      - name: APK'yı Actions artifact olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: uspulse-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 14
