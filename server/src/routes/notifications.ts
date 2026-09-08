@@ -1,9 +1,10 @@
 import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
+import { requireEntitlement } from '../middleware/subscription';
 
 const router = Router();
-router.use(requireAuth, requireCouple);
+router.use(requireAuth, requireCouple, requireEntitlement);
 
 router.get('/', (req, res) => {
   const me = req.user!;

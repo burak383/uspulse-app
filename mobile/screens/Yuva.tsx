@@ -135,13 +135,22 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
     }, [loadAll]),
   );
 
+  const [moodSubmitting, setMoodSubmitting] = useState(false);
+
   const cycleMyMood = async () => {
-    if (!mood) return;
+    if (!mood || moodSubmitting) return;
     const options = mood.availableMoods;
     const currentIndex = mood.me ? options.indexOf(mood.me.mood) : -1;
     const next = options[(currentIndex + 1 + options.length) % options.length];
-    const res = await api.post<{ mood: string; at: string }>('/mood', { mood: next });
-    setMood((prev) => (prev ? { ...prev, me: res } : prev));
+    setMoodSubmitting(true);
+    try {
+      const res = await api.post<{ mood: string; at: string }>('/mood', { mood: next });
+      setMood((prev) => (prev ? { ...prev, me: res } : prev));
+    } catch {
+      Alert.alert('Ruh hâli güncellenemedi', 'Lütfen tekrar dene.');
+    } finally {
+      setMoodSubmitting(false);
+    }
   };
 
   const sendHeart = async () => {
@@ -159,6 +168,8 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
       if (hapticsEnabled) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       }
+    } catch {
+      Alert.alert('Gönderilemedi', 'Kalbin gönderilemedi, lütfen tekrar dene.');
     } finally {
       setSendingHeart(false);
     }

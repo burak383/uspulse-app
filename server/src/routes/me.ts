@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import db from '../db';
 import { requireAuth } from '../middleware/auth';
+import { getEntitlement } from '../middleware/subscription';
 import { deleteUploadedMediaByUrl } from '../uploads';
 
 const router = Router();
@@ -52,6 +53,10 @@ router.get('/', requireAuth, (req, res) => {
     distance = Math.round(distanceKm(row.lat, row.lng, partner.lat, partner.lng));
   }
 
+  // Abonelik/deneme durumu -- mobil taraf bunu okuyup Paywall'u göstermeyi
+  // gerektirip gerektirmediğine karar verir (bkz. middleware/subscription.ts).
+  const entitlement = me.coupleId ? getEntitlement(me.coupleId) : null;
+
   res.json({
     user: publicUser(row),
     partner: partner ? publicUser(partner) : null,
@@ -59,6 +64,10 @@ router.get('/', requireAuth, (req, res) => {
     distanceKm: distance,
     locationSharedByMe: iShared,
     locationSharedByPartner: partnerShared,
+    // Sürüş takibi paylaşımı (bkz. routes/driving.ts) diğer cihazlarla
+    // senkron kalması için sunucu tarafında (AsyncStorage değil) tutulur.
+    drivingShareEnabled: Boolean(row.driving_share_enabled),
+    entitlement,
   });
 });
 
@@ -113,13 +122,50 @@ router.delete('/push-token', requireAuth, (req, res) => {
 // API anahtarı gerekmiyor.
 const MAX_AVATAR_BASE64_LENGTH = 2_800_000; // ~2MB base64 (~1.5MB ham veri) -- 512x512 bir JPEG için bolca yeterli.
 
+// data: URI'nin beyan ettiği MIME türüne güvenmek yerine, gerçek dosya
+// imzasını (magic bytes) kontrol ediyoruz -- uploads.ts'teki multipart
+// yükleme yolunda zaten yapılan MIME whitelist kontrolüyle aynı savunma
+// derinliği. Aksi halde biri "image/png" beyan edip aslında farklı/zararlı
+// bir içerik gönderebilirdi.
+const MAGIC_BYTES: { prefix: string; signatures: number[][] }[] = [
+  { prefix: 'data:image/jpeg;base64,', signatures: [[0xff, 0xd8, 0xff]] },
+  { prefix: 'data:image/jpg;base64,', signatures: [[0xff, 0xd8, 0xff]] },
+  { prefix: 'data:image/png;base64,', signatures: [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]] },
+  // WebP: "RIFF"...."WEBP" -- ilk 4 ve 9-12. baytlar arasında boyut alanı var,
+  // bu yüzden imzayı iki parça olarak kontrol ediyoruz (aşağıdaki özel dal).
+];
+
+function isValidAvatarImage(dataUri: string): boolean {
+  const match = /^data:image\/(jpeg|jpg|png|webp);base64,([A-Za-z0-9+/]+=*)$/.exec(dataUri);
+  if (!match) return false;
+  let buf: Buffer;
+  try {
+    buf = Buffer.from(match[2], 'base64');
+  } catch {
+    return false;
+  }
+  if (buf.length < 12) return false;
+  const mime = match[1];
+  if (mime === 'webp') {
+    return (
+      buf.slice(0, 4).toString('ascii') === 'RIFF' && buf.slice(8, 12).toString('ascii') === 'WEBP'
+    );
+  }
+  const rule = MAGIC_BYTES.find((r) => r.prefix === `data:image/${mime};base64,`);
+  if (!rule) return false;
+  return rule.signatures.some((sig) => sig.every((byte, i) => buf[i] === byte));
+}
+
 router.put('/avatar', requireAuth, (req, res) => {
   const { image } = req.body ?? {};
-  if (typeof image !== 'string' || !/^data:image\/(jpeg|jpg|png|webp);base64,/.test(image)) {
+  if (typeof image !== 'string' || image.length > MAX_AVATAR_BASE64_LENGTH) {
+    if (typeof image === 'string' && image.length > MAX_AVATAR_BASE64_LENGTH) {
+      return res.status(413).json({ error: 'Fotoğraf çok büyük. Daha küçük bir fotoğraf dene.' });
+    }
     return res.status(400).json({ error: 'Geçerli bir resim (data:image/...;base64,...) gerekli.' });
   }
-  if (image.length > MAX_AVATAR_BASE64_LENGTH) {
-    return res.status(413).json({ error: 'Fotoğraf çok büyük. Daha küçük bir fotoğraf dene.' });
+  if (!isValidAvatarImage(image)) {
+    return res.status(400).json({ error: 'Geçerli bir resim (data:image/...;base64,...) gerekli.' });
   }
   db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(image, req.user!.id);
   res.status(204).end();
@@ -130,12 +176,17 @@ router.delete('/avatar', requireAuth, (req, res) => {
   res.status(204).end();
 });
 
-// Hesap ve tüm kişisel verilerin silinmesi (KVKK/GDPR ve Facebook'un "User
+// Hesap ve tüm kişisel verilerin silinmesi (KVKK/GDPR ve Google'ın "User
 // Data Deletion" gereksinimi için gerekli): kullanıcının kendi yazdığı
 // ruh hali, dokunuş, anı, günün sorusu cevabı ve plan/birikim katkılarını,
 // ardından kullanıcı kaydının kendisini siler. Partnerin hesabına ve ortak
 // couple kaydına dokunmaz -- sadece silinen kullanıcının kendi verileri gider.
 const deleteMyData = db.transaction((userId: string) => {
+  const before = db.prepare('SELECT couple_id FROM users WHERE id = ?').get(userId) as
+    | { couple_id: string | null }
+    | undefined;
+  const coupleId = before?.couple_id ?? null;
+
   db.prepare('DELETE FROM moods WHERE user_id = ?').run(userId);
   db.prepare('DELETE FROM touches WHERE sender_id = ?').run(userId);
   // Satırları silmeden önce, varsa diskteki gerçek fotoğraf/video/ses
@@ -152,6 +203,20 @@ const deleteMyData = db.transaction((userId: string) => {
   // bağlı -- bunlar silinmeden users satırı silinirse FK ihlali oluşur.
   db.prepare('DELETE FROM notifications WHERE recipient_id = ? OR actor_id = ?').run(userId, userId);
   db.prepare('DELETE FROM users WHERE id = ?').run(userId);
+
+  // Kalan partner "sahipsiz" bir çifte bağlı kalıp sonsuza dek kilitlenmesin
+  // diye: bu kullanıcı bir çiftteyse ve silindikten sonra o çiftte tam
+  // olarak bir kişi kaldıysa (yani partner), onu da çiftten çıkarıyoruz ki
+  // dilediğinde yeni biriyle yeniden eşleşebilsin (routes/auth.ts POST /pair,
+  // zaten dolu couple_id'li kullanıcıların eşleşmesini reddediyor). Eski
+  // çiftin paylaşılan verileri (anılar, dokunuşlar, planlar vb.) dokunulmadan
+  // kalır -- yalnızca kimsenin artık erişemeyeceği bir kayıt hâline gelir.
+  if (coupleId) {
+    const remaining = db.prepare('SELECT id FROM users WHERE couple_id = ?').all(coupleId) as { id: string }[];
+    if (remaining.length === 1) {
+      db.prepare('UPDATE users SET couple_id = NULL WHERE id = ?').run(remaining[0].id);
+    }
+  }
 });
 
 router.delete('/', requireAuth, (req, res) => {

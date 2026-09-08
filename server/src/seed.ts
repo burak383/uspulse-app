@@ -24,9 +24,30 @@ export function seedDemoData() {
   let couple: any = db.prepare('SELECT * FROM couples LIMIT 1').get();
   const coupleId = couple?.id ?? newId();
   if (!couple) {
+    // Bu demo çift, normal eşleşme akışının (routes/auth.ts POST /pair) dışında
+    // doğrudan buradan oluşturuluyor, yani trial_started_at hiç set edilmezdi --
+    // bu da demo hesabının (elif@uspulse.app) her zaman "deneme süresi bitti"
+    // durumunda Paywall'a düşmesine yol açıyordu. Mağaza incelemesi (Google
+    // Play/App Store) tam olarak bu demo hesabıyla giriş yapıp kısıtlı
+    // bölümleri (Anılar/Planlar/Biz vb.) görebilmek zorunda -- Paywall'a takılırsa
+    // inceleme reddedilebilir. Bu yüzden demo çifti, süresi çok ileri bir
+    // tarihte biten "aktif abonelik" olarak işaretliyoruz; hem incelemeciler
+    // hem de "Demo hesabıyla dene" butonunu kullanan meraklı kullanıcılar
+    // gerçek bir ödeme yapmadan uygulamanın tamamını görebilsin.
     db.prepare(
-      `INSERT INTO couples (id, reunion_title, reunion_location, reunion_date) VALUES (?, ?, ?, ?)`,
-    ).run(coupleId, 'İstanbul Buluşması', 'İstanbul', '2026-09-14');
+      `INSERT INTO couples (
+        id, reunion_title, reunion_location, reunion_date,
+        subscription_active, subscription_expires_at, subscription_product_id, subscription_platform
+      ) VALUES (?, ?, ?, ?, 1, ?, ?, ?)`,
+    ).run(
+      coupleId,
+      'İstanbul Buluşması',
+      'İstanbul',
+      '2026-09-14',
+      '2099-01-01T00:00:00.000Z',
+      'demo_review_access',
+      'demo',
+    );
   }
 
   const elifId = upsertUser('Elif', 'elif@uspulse.app', 'uspulse1234', coupleId);

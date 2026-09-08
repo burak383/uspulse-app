@@ -1,13 +1,17 @@
 import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
+import { requireEntitlement } from '../middleware/subscription';
+import { rateLimitPerUser } from '../middleware/rateLimit';
 import { newId } from '../util';
 import { notifyPartner } from '../notify';
 
 const router = Router();
-router.use(requireAuth, requireCouple);
+router.use(requireAuth, requireCouple, requireEntitlement);
 
 const CATEGORIES = ['city', 'movie', 'place', 'plan'];
+const MAX_TITLE_LENGTH = 200;
+const MAX_SUBTITLE_LENGTH = 500;
 
 router.get('/', (req, res) => {
   const { category } = req.query;
@@ -30,10 +34,13 @@ router.get('/', (req, res) => {
   res.json(rows);
 });
 
-router.post('/', (req, res) => {
+router.post('/', rateLimitPerUser('plans', 30, 60 * 1000), (req, res) => {
   const { category, title, subtitle } = req.body ?? {};
   if (!category || !CATEGORIES.includes(category) || !title) {
     return res.status(400).json({ error: `category (${CATEGORIES.join('/')}) ve title gerekli.` });
+  }
+  if (String(title).length > MAX_TITLE_LENGTH || (subtitle && String(subtitle).length > MAX_SUBTITLE_LENGTH)) {
+    return res.status(400).json({ error: `title en fazla ${MAX_TITLE_LENGTH}, subtitle en fazla ${MAX_SUBTITLE_LENGTH} karakter olabilir.` });
   }
   const id = newId();
   db.prepare(
@@ -63,6 +70,12 @@ router.patch('/:id', (req, res) => {
   }
   if (title !== undefined && !String(title).trim()) {
     return res.status(400).json({ error: 'title boş olamaz.' });
+  }
+  if (
+    (title !== undefined && String(title).length > MAX_TITLE_LENGTH) ||
+    (subtitle && String(subtitle).length > MAX_SUBTITLE_LENGTH)
+  ) {
+    return res.status(400).json({ error: `title en fazla ${MAX_TITLE_LENGTH}, subtitle en fazla ${MAX_SUBTITLE_LENGTH} karakter olabilir.` });
   }
 
   db.prepare(

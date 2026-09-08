@@ -1,11 +1,16 @@
 import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
+import { requireEntitlement } from '../middleware/subscription';
+import { rateLimitPerUser } from '../middleware/rateLimit';
 import { newId } from '../util';
 import { notifyPartner } from '../notify';
 
 const router = Router();
-router.use(requireAuth, requireCouple);
+router.use(requireAuth, requireCouple, requireEntitlement);
+
+const MAX_TITLE_LENGTH = 200;
+const MAX_NOTE_LENGTH = 500;
 
 function serializeGoal(goal: any) {
   const contributions = db
@@ -31,10 +36,18 @@ router.get('/', (req, res) => {
   res.json(goals.map(serializeGoal));
 });
 
-router.post('/', (req, res) => {
+// Diğer yazma uçlarıyla (touches/mood/plans/reunion/memories, bkz. o
+// route'lardaki aynı gerekçe) aynı sebeple: her yeni hedef partnere bir push
+// bildirimi tetikliyor, limitsiz olması bildirim spam'ine açık kapı bırakırdı.
+router.post('/', rateLimitPerUser('savings-goal', 10, 60 * 1000), (req, res) => {
   const { title, targetAmount, note } = req.body ?? {};
-  if (!title || !targetAmount) {
-    return res.status(400).json({ error: 'title ve targetAmount gerekli.' });
+  if (!title || !targetAmount || !Number.isFinite(Number(targetAmount)) || Number(targetAmount) <= 0) {
+    return res.status(400).json({ error: 'title ve geçerli bir targetAmount gerekli.' });
+  }
+  if (String(title).length > MAX_TITLE_LENGTH || (note && String(note).length > MAX_NOTE_LENGTH)) {
+    return res
+      .status(400)
+      .json({ error: `title en fazla ${MAX_TITLE_LENGTH}, not en fazla ${MAX_NOTE_LENGTH} karakter olabilir.` });
   }
   const id = newId();
   db.prepare(
@@ -52,10 +65,13 @@ router.post('/', (req, res) => {
   });
 });
 
-router.post('/:id/contribute', (req, res) => {
+router.post('/:id/contribute', rateLimitPerUser('savings-contribute', 20, 60 * 1000), (req, res) => {
   const { amount, note } = req.body ?? {};
-  if (!amount || Number(amount) <= 0) {
+  if (!amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
     return res.status(400).json({ error: 'Geçerli bir tutar gerekli.' });
+  }
+  if (note && String(note).length > MAX_NOTE_LENGTH) {
+    return res.status(400).json({ error: `not en fazla ${MAX_NOTE_LENGTH} karakter olabilir.` });
   }
   const goal: any = db
     .prepare('SELECT * FROM savings_goals WHERE id = ? AND couple_id = ?')
@@ -86,8 +102,16 @@ router.patch('/:id', (req, res) => {
   if (title !== undefined && !String(title).trim()) {
     return res.status(400).json({ error: 'title boş olamaz.' });
   }
-  if (targetAmount !== undefined && Number(targetAmount) <= 0) {
+  if (targetAmount !== undefined && (!Number.isFinite(Number(targetAmount)) || Number(targetAmount) <= 0)) {
     return res.status(400).json({ error: 'targetAmount geçerli bir sayı olmalı.' });
+  }
+  if (
+    (title !== undefined && String(title).length > MAX_TITLE_LENGTH) ||
+    (note && String(note).length > MAX_NOTE_LENGTH)
+  ) {
+    return res
+      .status(400)
+      .json({ error: `title en fazla ${MAX_TITLE_LENGTH}, not en fazla ${MAX_NOTE_LENGTH} karakter olabilir.` });
   }
 
   db.prepare(

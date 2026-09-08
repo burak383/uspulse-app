@@ -71,25 +71,27 @@ router.get('/privacy', (_req, res) => {
 
       <h2>Hangi verileri topluyoruz</h2>
       <ul>
-        <li><strong>Hesap bilgileri:</strong> adın, e-posta adresin ve şifrenin şifrelenmiş (hash'lenmiş) hâli. Google veya Facebook ile giriş yaparsan, o hesabından paylaşılmasına izin verdiğin ad, e-posta ve profil kimliği.</li>
+        <li><strong>Hesap bilgileri:</strong> adın, e-posta adresin ve şifrenin şifrelenmiş (hash'lenmiş) hâli. Google ile giriş yaparsan, o hesabından paylaşılmasına izin verdiğin ad, e-posta ve profil kimliği.</li>
         <li><strong>Profil fotoğrafı (opsiyonel):</strong> Biz sekmesinden kendi fotoğrafını seçersen, cihazında küçültülüp sıkıştırılır ve sunucuya kaydedilir; bu fotoğraf yalnızca partnerine gösterilir. İstediğin zaman kaldırabilirsin.</li>
         <li><strong>Uygulama içi içerik:</strong> paylaştığın ruh hâli, gönderdiğin "kalp" (dokunuş) etkileşimlerinin zaman damgası, yazdığın anılar/notlar, günün sorusuna verdiğin cevaplar, eklediğin planlar ve birikim katkıları.</li>
         <li><strong>Anılara eklediğin fotoğraf/video/ses (opsiyonel):</strong> Anılar sekmesinde bir fotoğraf, video veya ses notu eklersen, bu dosya sunucumuza yüklenir ve yalnızca senin ile eşleşmiş partnerine gösterilir. Bir anıyı sildiğinde ya da hesabını sildiğinde, o anıya ait dosya da sunucudan kalıcı olarak silinir.</li>
         <li><strong>Konum (opsiyonel):</strong> Biz sekmesinden konum paylaşımını açarsan, cihazının yaklaşık enlem/boylamını sunucuya göndeririz. "Her zaman izin ver" konum iznini verirsen bu, aranızdaki mesafeyi güncel tutmak için <strong>uygulama kapalıyken/arka plandayken de</strong> periyodik olarak (birkaç dakikada bir ya da belirgin bir konum değişikliğinde) gönderilir; yalnızca "uygulamayı kullanırken" izni verirsen paylaşım sadece uygulamayı her açtığında gerçekleşir. Bunu <strong>istediğin zaman kapatabilirsin</strong>; kapatınca hem arka plan takibi durur hem de sunucudaki kayıt silinir.</li>
+        <li><strong>Sürüş takibi (opsiyonel, ayrı bir onay gerektirir):</strong> Biz sekmesinden "Sürüş takibi"ni ayrıca açarsan, otomobille sürüş halindeyken (hız belirli bir eşiğin üzerinde kaldığı sürece) konumun daha sık aralıklarla (yaklaşık 15 saniyede bir) sunucuya gönderilir ve <strong>partnerine CANLI olarak</strong> gösterilir -- bkz. aşağıdaki not. Sürüş bittiğinde (ya da bir süre güncelleme gelmediğinde) bu kayıt sunucudan tamamen silinir; geçmiş seyahatler tutulmaz. Bunu istediğin zaman kapatabilirsin; kapatınca aktif seyahat kaydı da hemen silinir.</li>
         <li><strong>Teknik veriler:</strong> sunucu barındırma sağlayıcımızın (Render) tuttuğu standart erişim kayıtları (ör. IP adresi, istek zamanı) — bunlar güvenlik ve hata ayıklama amacıyla kısa süreliğine tutulur.</li>
         <li><strong>Abonelik durumu (varsa):</strong> aylık/yıllık abonelik satın alırsan, satın alma işlemini yöneten RevenueCat servisi bize aboneliğinin aktif olup olmadığını, hangi ürünün ve hangi mağazanın (App Store/Google Play) satın alındığını ve son geçerlilik tarihini bildirir. Kart numaran ya da diğer ödeme bilgilerin bize hiçbir zaman ulaşmaz; bunlar doğrudan Apple/Google tarafından işlenir.</li>
         <li><strong>Anlık bildirim (push) jetonu (opsiyonel):</strong> bildirimlere izin verirsen, cihazını (ve yalnızca o cihazı) tanımlayan bir Expo push jetonu sunucumuza kaydedilir. Bu jeton, partnerin ruh hâlini değiştirdiğinde, sana bir "kalp" gönderdiğinde ya da uygulama içinde başka bir etkileşimde bulunduğunda cihazına bildirim gönderebilmek için kullanılır; reklam ya da başka bir amaçla kullanılmaz. Bildirimleri kapatırsan ya da hesabını silersen bu jeton sunucudan kaldırılır.</li>
       </ul>
-      <p><strong>Kesin konumun asla partnerine gösterilmez.</strong> Konum paylaşımını açtığında bile, hem sen hem partnerin paylaştıysa yalnızca ikiniz arasındaki hesaplanmış yaklaşık mesafe (km) partnerine gösterilir — kendi enlem/boylamın uygulamanın hiçbir ekranında, hiçbir API yanıtında partnerine ya da başka birine gönderilmez.</p>
+      <p><strong>Kesin konumun normalde asla partnerine gösterilmez.</strong> Konum paylaşımını açtığında bile, hem sen hem partnerin paylaştıysa yalnızca ikiniz arasındaki hesaplanmış yaklaşık mesafe (km) partnerine gösterilir — kendi enlem/boylamın uygulamanın hiçbir ekranında, hiçbir API yanıtında partnerine ya da başka birine gönderilmez. <strong>Tek istisna, yukarıda açıklanan "Sürüş takibi"dir:</strong> bunu ayrıca ve bilerek açarsan, sürüş halindeyken kesin konumun (hız ve izlediğin yol) partnerine canlı olarak gösterilir; bu özellik varsayılan olarak kapalıdır ve istediğin zaman kapatılabilir.</p>
 
       <h2>Verilerini ne için kullanıyoruz</h2>
       <ul>
         <li>Hesabını oluşturmak, giriş yapmanı sağlamak ve seni partnerinle eşleştirmek.</li>
         <li>Paylaştığın ruh hâli, anı, plan ve diğer içerikleri sadece seninle eşleşmiş partnerine göstermek.</li>
         <li>İkiniz de konum paylaşımını açtıysanız, aranızdaki yaklaşık mesafeyi hesaplayıp göstermek.</li>
+        <li>Sürüş takibini açtıysan, sürüş halindeyken hızını ve izlediğin yolu partnerine canlı olarak göstermek.</li>
         <li>Şifre sıfırlama gibi hesap güvenliği işlemlerini yürütmek.</li>
       </ul>
-      <p>Verilerin reklam amacıyla kullanılmaz, satılmaz ve üçüncü taraflarla paylaşılmaz — Google/Facebook ile giriş yaptığında yalnızca kimliğini doğrulamak için o sağlayıcılarla iletişime geçilir.</p>
+      <p>Verilerin reklam amacıyla kullanılmaz, satılmaz ve üçüncü taraflarla paylaşılmaz — Google ile giriş yaptığında yalnızca kimliğini doğrulamak için bu sağlayıcıyla iletişime geçilir.</p>
 
       <h2>Verilerin nerede saklanıyor</h2>
       <p>Veriler, Render.com üzerinde barındırılan bir sunucuda tutulur. Şifreler asla düz metin olarak saklanmaz; bcrypt ile hash'lenir. Oturumların JWT (JSON Web Token) ile doğrulanır.</p>
@@ -171,10 +173,10 @@ router.get('/data-deletion', (_req, res) => {
       <p>Bu işlem yalnızca kendi hesabını ve kendi eklediğin içerikleri siler; partnerinin hesabı silinmez. Ancak eşleşmeniz sona erer: partnerin, aranızdaki paylaşılan anılara/planlara erişimini kaybeder ve dilediğinde yeni bir davet koduyla başka biriyle yeniden eşleşebilir.</p>
 
       <h2>Yalnızca konum verini silmek istiyorsan</h2>
-      <p>Hesabının tamamını silmeden sadece konum paylaşımını kapatmak istersen, <strong>Biz</strong> sekmesindeki "Konum" satırına dokunup kapatabilirsin — bu, hem cihazındaki arka plan konum takibini durdurur hem de sunucudaki enlem/boylam kaydını hemen siler.</p>
+      <p>Hesabının tamamını silmeden sadece konum paylaşımını kapatmak istersen, <strong>Biz</strong> sekmesindeki "Konum" satırına dokunup kapatabilirsin — bu, hem cihazındaki arka plan konum takibini durdurur hem de sunucudaki enlem/boylam kaydını hemen siler. Aynı şekilde "Sürüş takibi" satırını kapatmak, aktif seyahat kaydını (varsa) hemen ve kalıcı olarak siler.</p>
 
-      <h2>Facebook veya Google üzerinden giriş yaptıysan</h2>
-      <p>Uygulama içinden hesabını sildiğinde, Facebook/Google hesabınla olan bağlantımız da (ilişkilendirilmiş kimlik bilgisi) veritabanımızdan silinir. Ayrıca Facebook/Google hesap ayarlarından "Bağlı Uygulamalar" listesinden ${APP_NAME}'ü kaldırmak istersen bu adımı ilgili platform üzerinden ayrıca yapabilirsin — bu, o platformdaki izin kaydını temizler.</p>
+      <h2>Google üzerinden giriş yaptıysan</h2>
+      <p>Uygulama içinden hesabını sildiğinde, Google hesabınla olan bağlantımız da (ilişkilendirilmiş kimlik bilgisi) veritabanımızdan silinir. Ayrıca Google hesap ayarlarından "Bağlı Uygulamalar" listesinden ${APP_NAME}'ü kaldırmak istersen bu adımı ilgili platform üzerinden ayrıca yapabilirsin — bu, o platformdaki izin kaydını temizler.</p>
 
       <h2>Uygulamaya erişemiyorsan</h2>
       <p>Hesabına bir sebeple erişemiyorsan, hangi hesabın (kayıtlı e-posta adresin) silinmesini istediğini belirterek <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> adresine yazabilirsin; talebini elle işleme alıp verilerini sileriz.</p>

@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
+import { requireEntitlement } from '../middleware/subscription';
+import { rateLimitPerUser } from '../middleware/rateLimit';
 import { newId } from '../util';
 import { notifyPartner } from '../notify';
 import { uploadMemoryMedia, mediaRuleFor, deleteUploadedMediaByUrl, UPLOADS_DIR } from '../uploads';
@@ -17,11 +19,13 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const router = Router();
-router.use(requireAuth, requireCouple);
+router.use(requireAuth, requireCouple, requireEntitlement);
 
 const TYPES = ['photo', 'video', 'audio', 'drawing', 'note', 'capsule'];
 // Bu tipler gerçek bir medya dosyası (multipart/form-data, "media" alanı) gerektirir.
 const MEDIA_TYPES = ['photo', 'video', 'audio'];
+const MAX_TITLE_LENGTH = 200;
+const MAX_NOTE_LENGTH = 5000;
 
 // "MÜHÜRLÜ" zaman kapsülleri gerçekten mühürlü olsun: açılma tarihi henüz
 // gelmediyse, kapsülü OLUŞTURAN kişi dışında kimse (yani partner) note/
@@ -66,7 +70,12 @@ function handleMediaUpload(req: any, res: any, next: any) {
   });
 }
 
-router.post('/', handleMediaUpload, (req, res) => {
+// Diğer yazma uçlarıyla (touches/mood/plans/reunion, bkz. o route'lardaki
+// aynı gerekçe) aynı sebeple: her anı ekleme partnere bir push bildirimi
+// tetikliyor, limitsiz olması bildirim spam'ine açık kapı bırakırdı. Medya
+// yükleyen istekler daha yavaş tamamlandığından limit diğerlerinden biraz
+// daha gevşek.
+router.post('/', rateLimitPerUser('memories', 15, 60 * 1000), handleMediaUpload, (req, res) => {
   const { type, title, note, unlockAt, mediaUrl: rawMediaUrl } = req.body ?? {};
   const file = (req as any).file as Express.Multer.File | undefined;
 
@@ -78,6 +87,15 @@ router.post('/', handleMediaUpload, (req, res) => {
     cleanupFile();
     return res.status(400).json({ error: `type (${TYPES.join('/')}) ve title alanları gerekli.` });
   }
+  if (
+    String(title).length > MAX_TITLE_LENGTH ||
+    (note && String(note).length > MAX_NOTE_LENGTH)
+  ) {
+    cleanupFile();
+    return res
+      .status(400)
+      .json({ error: `title en fazla ${MAX_TITLE_LENGTH}, not en fazla ${MAX_NOTE_LENGTH} karakter olabilir.` });
+  }
 
   let mediaUrl: string | null = null;
 
@@ -86,11 +104,11 @@ router.post('/', handleMediaUpload, (req, res) => {
       return res.status(400).json({ error: `${type} tipi bir anı için bir medya dosyası (media) gerekli.` });
     }
     const rule = mediaRuleFor(type)!;
-    if (!file.mimetype.startsWith(rule.mimePrefix)) {
+    if (!rule.allowedMimes.includes(file.mimetype)) {
       cleanupFile();
       return res
         .status(400)
-        .json({ error: `Geçersiz dosya türü. ${type} için ${rule.mimePrefix}* bekleniyor.` });
+        .json({ error: `Geçersiz dosya türü. ${type} için desteklenen türler: ${rule.allowedMimes.join(', ')}.` });
     }
     if (file.size > rule.maxBytes) {
       cleanupFile();
@@ -135,8 +153,8 @@ router.post('/', handleMediaUpload, (req, res) => {
 });
 
 router.patch('/:id', (req, res) => {
-  const { title, unlockAt } = req.body ?? {};
-  let { note } = req.body ?? {};
+  const { title } = req.body ?? {};
+  let { note, unlockAt } = req.body ?? {};
   const row: any = db
     .prepare('SELECT * FROM memories WHERE id = ? AND couple_id = ?')
     .get(req.params.id, req.user!.coupleId);
@@ -144,15 +162,26 @@ router.patch('/:id', (req, res) => {
   if (title !== undefined && !String(title).trim()) {
     return res.status(400).json({ error: 'title boş olamaz.' });
   }
+  if (
+    (title !== undefined && String(title).length > MAX_TITLE_LENGTH) ||
+    (note && String(note).length > MAX_NOTE_LENGTH)
+  ) {
+    return res
+      .status(400)
+      .json({ error: `title en fazla ${MAX_TITLE_LENGTH}, not en fazla ${MAX_NOTE_LENGTH} karakter olabilir.` });
+  }
 
   // Kapsül henüz kilitliyse (bkz. isCapsuleLockedFor) -- yani bu isteği yapan
   // kişi kapsülü oluşturan değilse ve açılma tarihi gelmediyse -- gizli
   // içeriği ne görebilir ne de üzerine yazabilir. İstek gövdesinde ne
   // gönderilirse gönderilsin note güncellemesini yok sayıyoruz; yoksa
   // mobil tarafta "görünmeyen" boş bir alanı kaydetmek gerçek içeriği
-  // sessizce silebilir.
+  // sessizce silebilir. unlockAt'ı da aynı sebeple yok sayıyoruz -- aksi
+  // halde partner, açılma tarihini geçmişe çekerek kilidi anında kırabilir
+  // ya da uzatarak oluşturanın planını bozabilirdi.
   if (isCapsuleLockedFor(row, req.user!.id)) {
     note = undefined;
+    unlockAt = undefined;
   }
 
   db.prepare(
@@ -177,6 +206,12 @@ router.delete('/:id', (req, res) => {
     .prepare('SELECT * FROM memories WHERE id = ? AND couple_id = ?')
     .get(req.params.id, req.user!.coupleId);
   if (!row) return res.status(404).json({ error: 'Bulunamadı.' });
+  // Henüz açılmamış bir zaman kapsülünü sadece oluşturan silebilir --
+  // partnerin, içeriğini asla göremeyeceği bir sürprizi yok etmesine izin
+  // vermiyoruz.
+  if (isCapsuleLockedFor(row, req.user!.id)) {
+    return res.status(403).json({ error: 'Bu zaman kapsülü henüz açılmadı.' });
+  }
   db.prepare('DELETE FROM memories WHERE id = ?').run(row.id);
   // Anı satırıyla birlikte, varsa diskteki gerçek medya dosyasını da temizle.
   deleteUploadedMediaByUrl(row.media_url);

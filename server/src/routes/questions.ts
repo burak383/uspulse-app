@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
+import { requireEntitlement } from '../middleware/subscription';
 import { newId, today } from '../util';
 import { notifyPartner } from '../notify';
 
 const router = Router();
-router.use(requireAuth, requireCouple);
+router.use(requireAuth, requireCouple, requireEntitlement);
+
+const MAX_ANSWER_LENGTH = 2000;
 
 function questionForDay(day: string): { id: string; text: string } {
   const bank = db.prepare('SELECT id, text FROM questions_bank ORDER BY id').all() as {
@@ -53,6 +56,9 @@ router.post('/today/answer', (req, res) => {
   const { text } = req.body ?? {};
   if (!text || !String(text).trim()) {
     return res.status(400).json({ error: 'Cevap metni gerekli.' });
+  }
+  if (String(text).length > MAX_ANSWER_LENGTH) {
+    return res.status(400).json({ error: `Cevap en fazla ${MAX_ANSWER_LENGTH} karakter olabilir.` });
   }
   const me = req.user!;
   const day = today();

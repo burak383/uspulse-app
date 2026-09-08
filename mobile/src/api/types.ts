@@ -15,6 +15,21 @@ export interface Couple {
   created_at: string;
 }
 
+/**
+ * Çift bazlı abonelik/deneme durumu -- server/src/middleware/subscription.ts
+ * (getEntitlement) tarafından hesaplanır. Eşleşmemiş kullanıcılar için null.
+ */
+export interface Entitlement {
+  trialing: boolean;
+  trialEndsAt: string | null;
+  trialDaysLeft: number;
+  subscriptionActive: boolean;
+  subscriptionExpiresAt: string | null;
+  subscriptionProductId: string | null;
+  subscriptionPlatform: string | null;
+  hasAccess: boolean;
+}
+
 export interface MeResponse {
   user: PublicUser;
   partner: PublicUser | null;
@@ -23,7 +38,23 @@ export interface MeResponse {
   distanceKm: number | null;
   locationSharedByMe: boolean;
   locationSharedByPartner: boolean;
+  /** Sürüş takibini (anlık hız + rota) partnere açtın mı -- bkz. DrivingContext. */
+  drivingShareEnabled: boolean;
+  entitlement: Entitlement | null;
 }
+
+export interface DrivingPoint {
+  lat: number;
+  lng: number;
+}
+
+/**
+ * Partnerin GET /driving/partner yanıtı. Geçmiş tutulmaz -- "active: false"
+ * hem sürüş bittiğinde hem de hiç paylaşılmadığında dönebilir.
+ */
+export type DrivingStatusResponse =
+  | { active: false }
+  | { active: true; startedAt: string; speedKmh: number; points: DrivingPoint[] };
 
 export interface AuthResponse {
   token: string;

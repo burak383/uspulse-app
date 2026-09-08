@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Pressable,
   SafeAreaView,
@@ -68,6 +69,17 @@ export default function MatchScreen() {
   const { user, error, pair, logout, clearError } = useAuth();
   const [partnerCode, setPartnerCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const handleLogout = () => {
+    if (loggingOut) return;
+    setLoggingOut(true);
+    logout()
+      .catch(() => {
+        Alert.alert('Çıkış yapılamadı', 'Lütfen tekrar dene.');
+      })
+      .finally(() => setLoggingOut(false));
+  };
 
   const inviteCode = user?.inviteCode ?? '------';
   const codeChars = inviteCode.padEnd(6, '-').split('');
@@ -110,8 +122,17 @@ export default function MatchScreen() {
 
           <SafeAreaView>
             <View style={styles.header}>
-              <Pressable accessibilityLabel="Çıkış yap" style={styles.circleButton} onPress={logout}>
-                <Icon name="log-out" size={19} color={colors.cardForeground} />
+              <Pressable
+                accessibilityLabel="Çıkış yap"
+                style={styles.circleButton}
+                onPress={handleLogout}
+                disabled={loggingOut}
+              >
+                {loggingOut ? (
+                  <ActivityIndicator size="small" color={colors.cardForeground} />
+                ) : (
+                  <Icon name="log-out" size={19} color={colors.cardForeground} />
+                )}
               </Pressable>
 
               <View style={styles.matchBadge}>

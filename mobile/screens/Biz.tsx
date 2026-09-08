@@ -230,6 +230,10 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     shareLocationNow,
     stopSharingLocation,
     backgroundLocationEnabled,
+    drivingShareEnabled,
+    drivingSubmitting,
+    enableDrivingShare,
+    disableDrivingShare,
     hapticsEnabled,
     setHapticsEnabled,
     refresh,
@@ -361,6 +365,46 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
           onPress: () => {
             shareLocationNow().catch((e) => {
               Alert.alert('Konum paylaşılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
+            });
+          },
+        },
+      ],
+    );
+  };
+
+  // "Konum (yaklaşık mesafe için)" ayarının aksine bu, kesin konumu (anlık
+  // hız + izlenen rota) partnerine CANLI gösteren bilinçli tek istisna --
+  // bu yüzden hem açarken hem kapatırken ayrı, net bir onay metni var.
+  const toggleDrivingShare = () => {
+    if (drivingShareEnabled) {
+      Alert.alert(
+        'Sürüş takibini kapat',
+        'Kapatırsan sürüş halindeyken artık hızın ve rotan partnerine gösterilmez, aktif seyahatin hemen silinir.',
+        [
+          { text: 'Vazgeç', style: 'cancel' },
+          {
+            text: 'Kapat',
+            style: 'destructive',
+            onPress: () => {
+              disableDrivingShare().catch(() => {
+                Alert.alert('Sürüş takibi kapatılamadı', 'Lütfen tekrar dene.');
+              });
+            },
+          },
+        ],
+      );
+      return;
+    }
+    Alert.alert(
+      'Sürüş takibini aç',
+      'Açarsan, otomobille sürüş halindeyken (hız belirli bir eşiğin üzerine çıktığında) anlık hızın ve izlediğin yol partnerine CANLI olarak gösterilir. Bu, uygulamanın geri kalanındaki "kesin konum asla gösterilmez" ilkesinin tek istisnasıdır -- sürüş bitince veri hemen silinir, geçmiş tutulmaz. Bunun için "Her Zaman İzin Ver" konum izni gerekecek.',
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        {
+          text: 'Devam et',
+          onPress: () => {
+            enableDrivingShare().catch((e) => {
+              Alert.alert('Sürüş takibi açılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
             });
           },
         },
@@ -728,6 +772,21 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
               active={locationSharedByMe}
               loading={locationSubmitting}
               onPress={toggleLocationSharing}
+            />
+            <PrivacyRow
+              icon="car-speed-limiter"
+              label="Sürüş takibi (hız + rota)"
+              color={colors.primary}
+              value={drivingShareEnabled ? 'Paylaşılıyor' : 'Kapalı'}
+              active={drivingShareEnabled}
+              loading={drivingSubmitting}
+              onPress={toggleDrivingShare}
+            />
+            <LinkRow
+              icon="map-marker-path"
+              label="Partnerinin sürüşünü gör"
+              color={colors.primary}
+              onPress={() => navigation.navigate('Surus')}
             />
             <PrivacyRow
               icon="creation"

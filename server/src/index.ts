@@ -13,7 +13,40 @@ import questionsRouter from './routes/questions';
 import plansRouter from './routes/plans';
 import savingsRouter from './routes/savings';
 import notificationsRouter from './routes/notifications';
+import drivingRouter from './routes/driving';
+import webhooksRouter from './routes/webhooks';
 import { UPLOADS_DIR } from './uploads';
+
+// Express 4, async route handler'lar içinde reddedilen (rejected) promise'leri
+// otomatik yakalamıyor -- try/catch'siz bir handler'da atlanan bir hata
+// normalde process'i (dolayısıyla TÜM sunucuyu, tüm çiftler için) çökertir.
+// Route'ların çoğuna ayrı ayrı try/catch eklendi (bkz. routes/auth.ts), ama bu
+// global dinleyici gözden kaçan/gelecekte eklenecek bir handler için son bir
+// güvenlik ağı: süreci ayakta tutar ve hatayı en azından loglar.
+process.on('unhandledRejection', (reason) => {
+  console.error('Yakalanmamış promise reddi:', reason);
+});
+
+// Render, hem gerçekten Render'da çalıştığımızı hem de Dashboard'dan
+// unutulmuş/eksik bırakılmış kritik ortam değişkenlerini erken (ve gürültülü
+// biçimde) tespit etmek için kullanılıyor -- NODE_ENV'in aksine Render bu
+// değişkeni her zaman kendisi otomatik ayarlıyor.
+const isRenderDeploy = Boolean(process.env.RENDER);
+if (isRenderDeploy && !process.env.JWT_SECRET) {
+  console.error(
+    'KRİTİK: JWT_SECRET ortam değişkeni ayarlanmamış. Render Dashboard > Environment üzerinden gerçek bir ' +
+      'sır değeri eklemeden bu servisi canlıda çalıştırma -- aksi halde tüm kullanıcı oturumları varsayılan, ' +
+      'herkesçe bilinen bir anahtarla imzalanır.',
+  );
+  process.exit(1);
+}
+if (isRenderDeploy && process.env.AUTO_SEED !== 'false') {
+  console.warn(
+    'UYARI: AUTO_SEED kapalı değil -- bu canlı Render dağıtımı her yeniden başlayışta demo hesapları ' +
+      '(elif@uspulse.app / deniz@uspulse.app) otomatik oluşturacak. Kalıcı diske geçtikten sonra Dashboard\'dan ' +
+      'AUTO_SEED=false ayarlamayı düşün.',
+  );
+}
 
 const app = express();
 // Render (ve genel olarak çoğu PaaS) bir ters proxy arkasında çalıştırıyor;
@@ -35,7 +68,7 @@ app.get('/api/health', (_req, res) => {
   res.json({ ok: true, name: 'uspulse-server', time: new Date().toISOString() });
 });
 
-// Facebook/Google uygulama incelemesi ve genel şeffaflık için: gizlilik
+// Google uygulama incelemesi ve genel şeffaflık için: gizlilik
 // politikası, kullanım koşulları ve veri silme talimatları -- /api altında
 // değil, kök yolda (ör. https://.../privacy) çünkü bunlar API uçları değil,
 // insan tarafından okunacak sayfalar.
@@ -51,6 +84,11 @@ app.use('/api/questions', questionsRouter);
 app.use('/api/plans', plansRouter);
 app.use('/api/savings', savingsRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/driving', drivingRouter);
+// RevenueCat'ten gelen sunucu-sunucu webhook çağrısı -- JWT ile korunmuyor
+// (mobil uygulamadan gelmiyor), kendi paylaşılan-sır (Bearer) doğrulamasını
+// kendi içinde yapıyor. bkz. routes/webhooks.ts.
+app.use('/api/webhooks', webhooksRouter);
 
 app.use((req, res) => {
   res.status(404).json({ error: `Bulunamadı: ${req.method} ${req.path}` });

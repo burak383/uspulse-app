@@ -123,6 +123,23 @@ CREATE TABLE IF NOT EXISTS notifications (
   read_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Sürüş takibi: kullanıcı hızı bir eşiğin üstünde seyrederken ("sürüş
+-- halinde") anlık hızı ve izlediği yolu (rota noktaları) partnerine
+-- GERÇEK ZAMANLI gösterir -- bkz. routes/driving.ts. Bilinçli olarak
+-- GEÇMİŞ tutulmuyor: sürüş bittiğinde (ya da bir süre güncelleme
+-- gelmediğinde) satır tamamen silinir, sadece o an aktif olan seyahat
+-- var olur. Bu, uygulamanın geri kalanındaki "kesin konum asla partnere
+-- gösterilmez" ilkesinin bilinçli, ayrı onay gerektiren tek istisnasıdır
+-- (bkz. users.driving_share_enabled).
+CREATE TABLE IF NOT EXISTS driving_trips (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  couple_id TEXT NOT NULL REFERENCES couples(id),
+  started_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  speed_kmh REAL NOT NULL DEFAULT 0,
+  points TEXT NOT NULL
+);
 `);
 
 // Lightweight migration for databases created before Google sign-in /
@@ -153,9 +170,46 @@ ensureColumn('users', 'push_token', 'push_token TEXT');
 // her zamanki gibi en güncel ruh halini görür; kapatıldığında (1) partnerin
 // GET /mood yanıtında bu kullanıcının ruh hali gizlenir -- bkz. routes/mood.ts.
 ensureColumn('users', 'mood_hidden', 'mood_hidden INTEGER NOT NULL DEFAULT 0');
+// Abonelik (RevenueCat) alanları -- çift bazlı: appUserID olarak coupleId
+// kullanılıyor, böylece iki partnerin de erişimi tek bir RevenueCat
+// müşterisinden otomatik senkronize oluyor. bkz. middleware/subscription.ts.
+// trial_started_at: çift oluşturulduğunda (routes/auth.ts POST /pair) set
+// edilir -- App/Play Store'un native "free trial" (ödeme bilgisi gerektiren)
+// mekanizması DEĞİL, uygulama seviyesinde otomatik 7 günlük deneme.
+ensureColumn('couples', 'trial_started_at', 'trial_started_at TEXT');
+// subscription_active/expires_at/product_id/platform: RevenueCat webhook'u
+// (routes/webhooks.ts) tarafından güncellenir -- gerçek abonelik durumunu
+// yansıtır, deneme süresinden bağımsızdır.
+ensureColumn('couples', 'subscription_active', 'subscription_active INTEGER NOT NULL DEFAULT 0');
+ensureColumn('couples', 'subscription_expires_at', 'subscription_expires_at TEXT');
+ensureColumn('couples', 'subscription_product_id', 'subscription_product_id TEXT');
+ensureColumn('couples', 'subscription_platform', 'subscription_platform TEXT');
+// Şifre sıfırlandığında artırılır ve JWT payload'ına gömülür (bkz.
+// middleware/auth.ts) -- böylece parola sıfırlamadan ÖNCE verilmiş eski
+// token'lar (30 gün geçerli) parola sıfırlandığı anda hemen geçersiz olur,
+// süresinin dolmasını beklemez. "Hesabım ele geçirildi" senaryosunda gerçek
+// bir korumadır.
+ensureColumn('users', 'token_version', 'token_version INTEGER NOT NULL DEFAULT 0');
+// Sürüş takibini partnere açma onayı -- varsayılan kapalı (0). Kapatıldığında
+// (bkz. routes/driving.ts DELETE /driving/share) aktif seyahat satırı da
+// hemen silinir, böylece partnerin ekranında hayalet bir rota kalmaz.
+ensureColumn('users', 'driving_share_enabled', 'driving_share_enabled INTEGER NOT NULL DEFAULT 0');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL;');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_id ON users(facebook_id) WHERE facebook_id IS NOT NULL;');
 db.exec('CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_id, created_at DESC);');
+// Neredeyse her route bir couple_id (ya da user_id) filtresiyle sorgu
+// çalıştırıyor (ör. "WHERE couple_id = ?") -- bu indeksler olmadan her
+// istek, çift/kullanıcı sayısı arttıkça yavaşlayan tam tablo taraması
+// gerektirir. Küçük demo verisinde fark edilmez ama gerçek kullanıcı
+// tabanında önemli hale gelir.
+db.exec('CREATE INDEX IF NOT EXISTS idx_memories_couple ON memories(couple_id);');
+db.exec('CREATE INDEX IF NOT EXISTS idx_plan_items_couple ON plan_items(couple_id);');
+db.exec('CREATE INDEX IF NOT EXISTS idx_savings_goals_couple ON savings_goals(couple_id);');
+db.exec('CREATE INDEX IF NOT EXISTS idx_savings_contributions_goal ON savings_contributions(goal_id);');
+db.exec('CREATE INDEX IF NOT EXISTS idx_touches_couple ON touches(couple_id);');
+db.exec('CREATE INDEX IF NOT EXISTS idx_moods_user ON moods(user_id);');
+db.exec('CREATE INDEX IF NOT EXISTS idx_users_couple ON users(couple_id);');
+db.exec('CREATE INDEX IF NOT EXISTS idx_driving_trips_couple ON driving_trips(couple_id);');
 
 const questionCount = (db.prepare('SELECT COUNT(*) as c FROM questions_bank').get() as { c: number }).c;
 if (questionCount === 0) {

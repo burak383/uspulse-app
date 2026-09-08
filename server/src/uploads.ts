@@ -15,11 +15,24 @@ if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-// Anı tipine göre kabul edilen MIME türleri ve azami dosya boyutu.
-const MEDIA_RULES: Record<string, { mimePrefix: string; maxBytes: number }> = {
-  photo: { mimePrefix: 'image/', maxBytes: 8 * 1024 * 1024 }, // ~8MB
-  video: { mimePrefix: 'video/', maxBytes: 50 * 1024 * 1024 }, // ~50MB
-  audio: { mimePrefix: 'audio/', maxBytes: 15 * 1024 * 1024 }, // ~15MB
+// Anı tipine göre kabul edilen MIME türleri ve azami dosya boyutu. Gevşek bir
+// "image/*" öneki yerine kesin bir izin listesi kullanıyoruz -- aksi halde
+// örn. "image/svg+xml" da kabul edilir ve SVG içine gömülü <script> ile
+// saklı XSS riski doğar (bkz. deleteUploadedMediaByUrl'in servis ettiği
+// /uploads statik yolu).
+const MEDIA_RULES: Record<string, { allowedMimes: string[]; maxBytes: number }> = {
+  photo: {
+    allowedMimes: ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic'],
+    maxBytes: 8 * 1024 * 1024, // ~8MB
+  },
+  video: {
+    allowedMimes: ['video/mp4', 'video/quicktime', 'video/3gpp'],
+    maxBytes: 50 * 1024 * 1024, // ~50MB
+  },
+  audio: {
+    allowedMimes: ['audio/mp4', 'audio/aac', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/webm'],
+    maxBytes: 15 * 1024 * 1024, // ~15MB
+  },
 };
 
 export function mediaRuleFor(type: string) {

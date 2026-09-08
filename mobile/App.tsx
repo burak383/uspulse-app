@@ -7,6 +7,7 @@ import { useFonts, Fraunces_600SemiBold } from '@expo-google-fonts/fraunces';
 import { Manrope_600SemiBold } from '@expo-google-fonts/manrope';
 import { AuthProvider } from './src/context/AuthContext';
 import RootNavigator from './navigation/RootNavigator';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { colors } from './theme';
 
 const navigationTheme = {
@@ -42,12 +43,14 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <NavigationContainer theme={navigationTheme}>
-          <StatusBar style="light" />
-          <RootNavigator />
-        </NavigationContainer>
-      </AuthProvider>
+      <ErrorBoundary>
+        <AuthProvider>
+          <NavigationContainer theme={navigationTheme}>
+            <StatusBar style="light" />
+            <RootNavigator />
+          </NavigationContainer>
+        </AuthProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }

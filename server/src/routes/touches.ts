@@ -1,20 +1,29 @@
 import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
+import { requireEntitlement } from '../middleware/subscription';
+import { rateLimitPerUser } from '../middleware/rateLimit';
 import { newId } from '../util';
 import { notifyPartner } from '../notify';
 
 const router = Router();
-router.use(requireAuth, requireCouple);
+router.use(requireAuth, requireCouple, requireEntitlement);
 
-router.post('/', (req, res) => {
+// Bir dakikada en fazla 20 dokunuş -- her biri partnerin telefonunu titreten
+// gerçek zamanlı bir push bildirimi tetiklediği için, limit olmadan bu uç
+// partneri sonsuz bildirim/titreşimle taciz etmek için kötüye kullanılabilirdi.
+router.post('/', rateLimitPerUser('touches', 20, 60 * 1000), (req, res) => {
   const { durationMs } = req.body ?? {};
+  const duration = Number(durationMs);
+  if (durationMs !== undefined && (!Number.isFinite(duration) || duration < 0 || duration > 24 * 60 * 60 * 1000)) {
+    return res.status(400).json({ error: 'Geçerli bir durationMs gerekli.' });
+  }
   const id = newId();
   db.prepare('INSERT INTO touches (id, couple_id, sender_id, duration_ms) VALUES (?, ?, ?, ?)').run(
     id,
     req.user!.coupleId,
     req.user!.id,
-    Number(durationMs) || 0,
+    Number.isFinite(duration) ? duration : 0,
   );
   const row = db.prepare('SELECT * FROM touches WHERE id = ?').get(id);
   res.status(201).json(row);

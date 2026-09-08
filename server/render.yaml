@@ -1,0 +1,60 @@
+# Render "Blueprint" tanımı -- bu dosyanın tek amacı, servisin gerçekte hangi
+# ortam değişkenlerine ihtiyaç duyduğunu kod içinde belgelemek (bkz.
+# .env.example) ve Render Dashboard'daki manuel servis kurulumunu
+# tekrarlanabilir hâle getirmek. Hiçbir gerçek sır/anahtar değeri BURADA
+# saklanmaz -- "sync: false" işaretli her değişken Dashboard'dan elle
+# girilmelidir; bu dosya sadece hangi değişkenlerin var olması gerektiğini
+# söyler.
+#
+# Kullanım: Render Dashboard'da "New > Blueprint" ile bu repo'yu bağlarsan bu
+# dosya otomatik okunur. Zaten manuel oluşturulmuş bir servisin varsa, bu
+# dosyayı değiştirmen gerekmez -- sadece burada listelenen değişkenlerin
+# Dashboard'daki servisinde de tanımlı olduğunu doğrulaman yeterli.
+services:
+  - type: web
+    name: uspulse-server
+    runtime: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      # Render'ın kendisi otomatik ayarlar; burada sadece belgeleme amaçlı.
+      - key: NODE_ENV
+        value: production
+      # Sunucunun kendi PORT'unu Render zaten otomatik enjekte eder; kodda
+      # process.env.PORT okunuyor (bkz. src/index.ts), burada elle set
+      # etmene gerek yok -- Render bu satırı görmezden gelip kendi değerini
+      # kullanır.
+      - key: PORT
+        value: 4000
+      # --- Aşağıdakiler gerçek sır/anahtar değerleri: repo'ya asla gerçek
+      # değerleriyle commit edilmemeli, Dashboard > Environment'tan girilmeli.
+      - key: JWT_SECRET
+        sync: false
+      - key: REVENUECAT_WEBHOOK_SECRET
+        sync: false
+      # Şifre sıfırlama e-postalarını gerçekten göndermek için (bkz. email.ts,
+      # .env.example). Boş bırakılırsa sistem çalışmaya devam eder ama kod
+      # hiçbir yere gitmez, sadece sunucu loguna yazılır.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM_EMAIL
+        sync: false
+      - key: GOOGLE_CLIENT_IDS
+        sync: false
+      - key: LEGAL_CONTACT_EMAIL
+        sync: false
+      # Ücretsiz plan (kalıcı disk yok) için varsayılan: her yeniden
+      # başlayışta demo verisi otomatik oluşturulur. Kalıcı diske
+      # geçtiğinde false yapman önerilir (bkz. .env.example).
+      - key: AUTO_SEED
+        value: true
+      # Ücretsiz planda dosya sistemi kalıcı değil; kalıcı diske geçersen
+      # DB_PATH ve UPLOADS_DIR'i o diskin bağlandığı yola göre ayarla ve
+      # aşağıdaki "disk" bloğunu bu servise ekle (Dashboard > Disks).
+      - key: DB_PATH
+        value: ./data/uspulse.db
+      - key: UPLOADS_DIR
+        value: ./data/uploads

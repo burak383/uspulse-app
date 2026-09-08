@@ -7,16 +7,18 @@ import { RootStackParamList } from './types';
 
 import AuthScreen from '../screens/AuthScreen';
 import MatchScreen from '../screens/ELe';
+import PaywallScreen from '../screens/Paywall';
 import HomeScreen from '../screens/Yuva';
 import PlansScreen from '../screens/Planlar';
 import MemoriesScreen from '../screens/AnLar';
 import TogetherScreen from '../screens/Biz';
 import DailyQuestionScreen from '../screens/GNNSorusu';
+import DrivingScreen from '../screens/Surus';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
-  const { status, user, partner } = useAuth();
+  const { status, user, partner, entitlement } = useAuth();
 
   if (status === 'loading') {
     return (
@@ -26,12 +28,22 @@ export default function RootNavigator() {
     );
   }
 
+  // Deneme süresi dolmuş ve aktif aboneliği olmayan eşleşmiş çiftler için
+  // tüm uygulama yerine Paywall gösterilir -- bkz.
+  // server/src/middleware/subscription.ts (getEntitlement) ve routes/me.ts
+  // (GET / entitlement alanı). Sunucu tarafı da her istekte ayrıca
+  // requireEntitlement ile bunu doğruluyor (bkz. routes/*.ts), bu yüzden bu
+  // ekran atlatılsa bile API çağrıları 402 ile reddedilir.
+  const accessBlocked = Boolean(partner && entitlement && !entitlement.hasAccess);
+
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!user ? (
         <Stack.Screen name="Auth" component={AuthScreen} />
       ) : !partner ? (
         <Stack.Screen name="Match" component={MatchScreen} />
+      ) : accessBlocked ? (
+        <Stack.Screen name="Paywall" component={PaywallScreen} />
       ) : (
         <>
           <Stack.Screen name="Yuva" component={HomeScreen} />
@@ -39,6 +51,7 @@ export default function RootNavigator() {
           <Stack.Screen name="Anilar" component={MemoriesScreen} />
           <Stack.Screen name="Biz" component={TogetherScreen} />
           <Stack.Screen name="GununSorusu" component={DailyQuestionScreen} />
+          <Stack.Screen name="Surus" component={DrivingScreen} />
         </>
       )}
     </Stack.Navigator>

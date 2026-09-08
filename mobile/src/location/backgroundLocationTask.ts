@@ -11,7 +11,7 @@
 // ediliyor.
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { API_URL } from '../api/client';
 
 export const BACKGROUND_LOCATION_TASK = 'uspulse-background-location-task';
@@ -20,6 +20,8 @@ export const BACKGROUND_LOCATION_TASK = 'uspulse-background-location-task';
 // tanımlanıyor: bu görev, uygulamanın normal JS bağlamından bağımsız
 // (headless) çalışabildiği için bellekteki auth durumuna (in-memory
 // authToken) güvenilemez -- jetonu her seferinde doğrudan diskten okuyoruz.
+// SecureStore (iOS Keychain / Android Keystore) kullanıyoruz, düz AsyncStorage
+// değil -- oturum jetonu hassas bir kimlik bilgisi, bkz. AuthContext.tsx.
 const TOKEN_KEY = 'uspulse_token';
 
 TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
@@ -28,7 +30,7 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
   const last = locations?.[locations.length - 1];
   if (!last) return;
   try {
-    const token = await AsyncStorage.getItem(TOKEN_KEY);
+    const token = await SecureStore.getItemAsync(TOKEN_KEY);
     if (!token) return;
     await fetch(`${API_URL}/me/location`, {
       method: 'PUT',

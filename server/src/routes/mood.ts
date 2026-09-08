@@ -1,15 +1,19 @@
 import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
+import { requireEntitlement } from '../middleware/subscription';
+import { rateLimitPerUser } from '../middleware/rateLimit';
 import { newId } from '../util';
 import { notifyPartner } from '../notify';
 
 const router = Router();
-router.use(requireAuth, requireCouple);
+router.use(requireAuth, requireCouple, requireEntitlement);
 
 const ALLOWED_MOODS = ['Neşeli', 'Sakin', 'Özlemli', 'Yorgun', 'Modunda', 'Heyecanlı'];
 
-router.post('/', (req, res) => {
+// Dakikada en fazla 10 ruh hali güncellemesi -- her biri partnere bildirim
+// gönderiyor, sınırsız olması bildirim spam'ine açık kapı bırakır.
+router.post('/', rateLimitPerUser('mood', 10, 60 * 1000), (req, res) => {
   const { mood } = req.body ?? {};
   if (!mood || !ALLOWED_MOODS.includes(mood)) {
     return res.status(400).json({ error: `Ruh hali şunlardan biri olmalı: ${ALLOWED_MOODS.join(', ')}` });

@@ -44,6 +44,19 @@ export function notifyPartner({ coupleId, actorId, type, title, body, data }: No
   ).run(newId(), coupleId, partner.id, actorId, type, title, body ?? null);
 
   if (partner.push_token) {
-    sendPushNotification(partner.push_token, { title, body, data: { type, ...(data ?? {}) } });
+    sendPushNotification(partner.push_token, { title, body, data: { type, ...(data ?? {}) } }).then(
+      ({ shouldClearToken }) => {
+        // Expo "bu cihaz artık kayıtlı değil" derse (uygulama kaldırılmış
+        // vb.), geçersiz jetona sonsuza dek sessizce başarısız push denemesi
+        // yapmamak için DB'deki kaydı temizliyoruz -- kullanıcı uygulamayı
+        // tekrar açtığında yeni bir jetonla otomatik olarak yeniden kaydolur.
+        if (shouldClearToken) {
+          db.prepare('UPDATE users SET push_token = NULL WHERE id = ? AND push_token = ?').run(
+            partner.id,
+            partner.push_token,
+          );
+        }
+      },
+    ).catch(() => {});
   }
 }

@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import db from '../db';
 import { newId, newInviteCode, newResetCode } from '../util';
 import { requireAuth, signToken } from '../middleware/auth';
+import { isEmailConfigured, sendPasswordResetEmail } from '../email';
 
 const router = Router();
 
@@ -14,12 +15,12 @@ const GOOGLE_CLIENT_IDS = (process.env.GOOGLE_CLIENT_IDS || '')
   .map((s) => s.trim())
   .filter(Boolean);
 
-// Meta for Developers > uygulaman > Settings > Basic üzerinden alınan Uygulama
-// Kimliği ve Uygulama Gizli Anahtarı. İkisi de boşsa Facebook ile giriş bu
-// sunucuda kapalı kabul edilir. Gizli anahtar SADECE burada, sunucuda kalır;
-// mobil tarafa (mobile/.env) hiçbir zaman kopyalanmaz.
-const FACEBOOK_APP_ID = (process.env.FACEBOOK_APP_ID || '').trim();
-const FACEBOOK_APP_SECRET = (process.env.FACEBOOK_APP_SECRET || '').trim();
+// Render, NODE_ENV'i otomatik ayarlamıyor (elle Dashboard'dan set edilmesi
+// gerekiyor) ama kendi RENDER ortam değişkenini her zaman otomatik koyuyor --
+// bu yüzden "gerçekten canlı bir dağıtım mı" sorusunu sadece NODE_ENV'e
+// güvenmeden de yanıtlayabiliyoruz. devCode gibi sadece geliştirme için var
+// olan alanlar NODE_ENV unutulsa bile Render'da asla sızmasın diye kullanılır.
+const isProductionDeploy = Boolean(process.env.RENDER) || process.env.NODE_ENV === 'production';
 
 // Şifre sıfırlama kodu 6 haneli (10^6 olasılık) ve 15 dakika geçerli, ama
 // deneme sayısını sınırlayan bir mekanizma olmazsa bu süre içinde sınırsız
@@ -134,16 +135,23 @@ router.post('/forgot-password', (req, res) => {
       row.id,
     );
 
-    // There is no email/SMS provider wired up in this demo backend, so the
-    // code can't actually be delivered anywhere yet. It's logged here (and,
-    // outside production, echoed back in the response) so the reset flow is
-    // testable end to end. Wire up a real provider (Postmark, SendGrid,
-    // Twilio, etc.) before using this with real users.
-    console.log(`[şifre sıfırlama] ${normalizedEmail} için kod: ${code} (15 dakika geçerli)`);
+    if (isEmailConfigured()) {
+      // Yanıtı e-posta gönderiminin bitmesini beklemeden döndürüyoruz (diğer
+      // fire-and-forget bildirimlerle tutarlı, bkz. notify.ts) -- gönderim
+      // başarısız olsa bile istemciye her zaman aynı nötr mesaj döner, yoksa
+      // "hesap var mı" bilgisi başarı/başarısızlık farkından sızabilirdi.
+      sendPasswordResetEmail(normalizedEmail, code).catch(() => {});
+    } else {
+      // RESEND_API_KEY tanımlı değilse (bkz. email.ts) hiçbir yere gerçekten
+      // e-posta gitmez; kod sadece loglanır ve (production dışında) API
+      // yanıtında devCode olarak döner, böylece sıfırlama akışı uçtan uca
+      // test edilebilir kalır.
+      console.log(`[şifre sıfırlama] ${normalizedEmail} için kod: ${code} (15 dakika geçerli)`);
+    }
     return res.json({
       ok: true,
       message: 'Hesap bulunduysa sıfırlama kodu gönderildi.',
-      ...(process.env.NODE_ENV === 'production' ? {} : { devCode: code }),
+      ...(isProductionDeploy || isEmailConfigured() ? {} : { devCode: code }),
     });
   }
 
@@ -181,8 +189,12 @@ router.post('/reset-password', (req, res) => {
   }
 
   const passwordHash = bcrypt.hashSync(String(newPassword), 10);
+  // token_version'ı artırmak, bu andan önce verilmiş TÜM eski token'ları
+  // (30 gün geçerli olabilirler) anında geçersiz kılar -- bkz.
+  // middleware/auth.ts. Hesabın parolası "ele geçirildiği için" sıfırlanmışsa
+  // eski (ele geçirmiş kişinin elindeki) oturum burada gerçekten kesilir.
   db.prepare(
-    'UPDATE users SET password_hash = ?, reset_code_hash = NULL, reset_code_expires = NULL WHERE id = ?',
+    'UPDATE users SET password_hash = ?, reset_code_hash = NULL, reset_code_expires = NULL, token_version = token_version + 1 WHERE id = ?',
   ).run(passwordHash, row.id);
 
   const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(row.id);
@@ -226,106 +238,38 @@ router.post('/google', async (req, res) => {
   const googleId = String(payload.sub);
   const name = payload.name ? String(payload.name) : email.split('@')[0];
 
-  let row: any = db.prepare('SELECT * FROM users WHERE google_id = ?').get(googleId);
-  if (!row) {
-    row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (row) {
-      db.prepare('UPDATE users SET google_id = ? WHERE id = ?').run(googleId, row.id);
-      row = db.prepare('SELECT * FROM users WHERE id = ?').get(row.id);
-    }
-  }
-
-  if (!row) {
-    const id = newId();
-    let inviteCode = newInviteCode();
-    while (db.prepare('SELECT 1 FROM users WHERE invite_code = ?').get(inviteCode)) {
-      inviteCode = newInviteCode();
-    }
-    db.prepare(
-      `INSERT INTO users (id, name, email, password_hash, invite_code, google_id, avatar_url) VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    ).run(id, name, email, null, inviteCode, googleId, payload.picture ?? null);
-    row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
-  }
-
-  const token = signToken(row.id);
-  res.json({ token, user: publicUser(row) });
-});
-
-router.post('/facebook', async (req, res) => {
-  if (!FACEBOOK_APP_ID || !FACEBOOK_APP_SECRET) {
-    return res
-      .status(501)
-      .json({ error: 'Facebook ile giriş bu sunucuda yapılandırılmamış (FACEBOOK_APP_ID/FACEBOOK_APP_SECRET eksik).' });
-  }
-  const { accessToken } = req.body ?? {};
-  if (!accessToken) {
-    return res.status(400).json({ error: 'accessToken gerekli.' });
-  }
-
-  let payload: any;
+  // Token doğrulaması bitti; buradan sonrası salt DB okuma/yazma. Express 4,
+  // async route handler'lar içindeki reddedilen promise'leri otomatik
+  // yakalamıyor -- try/catch olmadan beklenmeyen bir DB hatası tüm süreci
+  // (dolayısıyla sunucuyu) çökertebilir.
   try {
-    // debug_token, jetonu bize ait "uygulama jetonu" (app_id|app_secret) ile
-    // doğrular: jetonun gerçekten bizim Facebook uygulamamız için, geçerli ve
-    // süresi dolmamış olarak üretildiğini teyit eder -- Google akışındaki
-    // `aud` kontrolünün Facebook karşılığı.
-    const appToken = `${FACEBOOK_APP_ID}|${FACEBOOK_APP_SECRET}`;
-    const debugRes = await fetch(
-      `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(String(accessToken))}&access_token=${encodeURIComponent(appToken)}`,
-    );
-    if (!debugRes.ok) throw new Error('debug_token request failed');
-    const debug: any = await debugRes.json();
-    const info = debug?.data;
-    if (!info?.is_valid || String(info?.app_id) !== FACEBOOK_APP_ID) {
-      return res.status(401).json({ error: 'Facebook jetonu bu uygulama için geçerli değil.' });
+    let row: any = db.prepare('SELECT * FROM users WHERE google_id = ?').get(googleId);
+    if (!row) {
+      row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+      if (row) {
+        db.prepare('UPDATE users SET google_id = ? WHERE id = ?').run(googleId, row.id);
+        row = db.prepare('SELECT * FROM users WHERE id = ?').get(row.id);
+      }
     }
 
-    const profileRes = await fetch(
-      `https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(String(accessToken))}`,
-    );
-    if (!profileRes.ok) throw new Error('profile request failed');
-    payload = await profileRes.json();
-  } catch {
-    return res.status(401).json({ error: 'Facebook jetonu doğrulanamadı.' });
-  }
-
-  if (!payload?.id) {
-    return res.status(401).json({ error: 'Facebook jetonundan kimlik okunamadı.' });
-  }
-  if (!payload.email) {
-    // Facebook hesapları e-posta eklemeden de oluşturulabiliyor; e-posta
-    // izni verilmediyse ya da hesapta e-posta yoksa buraya düşer.
-    return res
-      .status(401)
-      .json({ error: 'Facebook hesabından e-posta alınamadı. Hesabında bir e-posta olduğundan ve izin verdiğinden emin ol.' });
-  }
-
-  const email = String(payload.email).toLowerCase();
-  const facebookId = String(payload.id);
-  const name = payload.name ? String(payload.name) : email.split('@')[0];
-
-  let row: any = db.prepare('SELECT * FROM users WHERE facebook_id = ?').get(facebookId);
-  if (!row) {
-    row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-    if (row) {
-      db.prepare('UPDATE users SET facebook_id = ? WHERE id = ?').run(facebookId, row.id);
-      row = db.prepare('SELECT * FROM users WHERE id = ?').get(row.id);
+    if (!row) {
+      const id = newId();
+      let inviteCode = newInviteCode();
+      while (db.prepare('SELECT 1 FROM users WHERE invite_code = ?').get(inviteCode)) {
+        inviteCode = newInviteCode();
+      }
+      db.prepare(
+        `INSERT INTO users (id, name, email, password_hash, invite_code, google_id, avatar_url) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, name, email, null, inviteCode, googleId, payload.picture ?? null);
+      row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     }
-  }
 
-  if (!row) {
-    const id = newId();
-    let inviteCode = newInviteCode();
-    while (db.prepare('SELECT 1 FROM users WHERE invite_code = ?').get(inviteCode)) {
-      inviteCode = newInviteCode();
-    }
-    db.prepare(
-      `INSERT INTO users (id, name, email, password_hash, invite_code, facebook_id) VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(id, name, email, null, inviteCode, facebookId);
-    row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    const token = signToken(row.id);
+    res.json({ token, user: publicUser(row) });
+  } catch (err) {
+    console.error('Google ile giriş sırasında sunucu hatası:', err);
+    res.status(500).json({ error: 'Giriş sırasında bir sunucu hatası oluştu.' });
   }
-
-  const token = signToken(row.id);
-  res.json({ token, user: publicUser(row) });
 });
 
 router.post('/pair', requireAuth, (req, res) => {
@@ -360,7 +304,10 @@ router.post('/pair', requireAuth, (req, res) => {
     coupleId = partner.couple_id;
   } else {
     coupleId = newId();
-    db.prepare('INSERT INTO couples (id) VALUES (?)').run(coupleId);
+    // trial_started_at: çift ilk kez eşleştiğinde 7 günlük ücretsiz deneme
+    // başlar -- bkz. db.ts (couples tablosu açıklaması) ve
+    // middleware/subscription.ts (getEntitlement).
+    db.prepare("INSERT INTO couples (id, trial_started_at) VALUES (?, datetime('now'))").run(coupleId);
     db.prepare('UPDATE users SET couple_id = ? WHERE id = ?').run(coupleId, partner.id);
   }
 

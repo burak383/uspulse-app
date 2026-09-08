@@ -434,8 +434,12 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
 
   const deleteMemory = (memory: Memory) => {
     confirmDelete(memory.title, async () => {
-      await api.delete(`/memories/${memory.id}`);
-      load();
+      try {
+        await api.delete(`/memories/${memory.id}`);
+        load();
+      } catch {
+        Alert.alert('Silinemedi', 'Lütfen tekrar dene.');
+      }
     });
   };
 

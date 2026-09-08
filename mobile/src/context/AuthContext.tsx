@@ -1,18 +1,23 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
+import { getSecureItemAsync, setSecureItemAsync, deleteSecureItemAsync } from '../storage/secureStorage';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
 import Constants from 'expo-constants';
-import { api, ApiError, setAuthToken } from '../api/client';
-import { AuthResponse, Couple, ForgotPasswordResponse, MeResponse, PublicUser } from '../api/types';
+import { api, ApiError, setAuthToken, setEntitlementBlockedHandler } from '../api/client';
+import { AuthResponse, Couple, Entitlement, ForgotPasswordResponse, MeResponse, PublicUser } from '../api/types';
 import {
   startBackgroundLocationTracking,
   stopBackgroundLocationTracking,
 } from '../location/backgroundLocationTask';
+import {
+  startDrivingLocationTracking,
+  stopDrivingLocationTracking,
+} from '../location/drivingLocationTask';
+import { configureRevenueCat, loginRevenueCatCouple, logoutRevenueCat } from '../subscriptions/purchases';
 
 const TOKEN_KEY = 'uspulse_token';
 // expo-secure-store keys can only contain word characters, '.', '-'.
@@ -55,7 +60,6 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
-  loginWithFacebook: (accessToken: string) => Promise<void>;
   forgotPassword: (email: string) => Promise<ForgotPasswordResponse>;
   resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
   pair: (code: string) => Promise<void>;
@@ -81,10 +85,21 @@ interface AuthContextValue {
   // Konum paylaşımı açıkken uygulama arka plandayken/kapalıyken de mesafeyi
   // güncel tutan sürekli takip gerçekten etkin mi (izin + görev kaydı).
   backgroundLocationEnabled: boolean;
+  // Sürüş takibi: AÇIK olduğunda, otomobille sürüş halindeyken (hız bir
+  // eşiğin üstünde kaldığı sürece) anlık hızın ve izlediğin yol partnerine
+  // GERÇEK ZAMANLI gösterilir -- "kesin konum asla partnere gösterilmez"
+  // ilkesinin bilinçli, ayrı onay gerektiren tek istisnası. Varsayılan kapalı.
+  drivingShareEnabled: boolean;
+  drivingSubmitting: boolean;
+  enableDrivingShare: () => Promise<void>;
+  disableDrivingShare: () => Promise<void>;
   // "Kalbimi Gönder" titreşimi: kendi cihazında anlık geri bildirim VE
   // partnerin "dokunuşu" gerçek zamanlı bildirimle aldığında titreşim.
   hapticsEnabled: boolean;
   setHapticsEnabled: (next: boolean) => Promise<void>;
+  // Abonelik/deneme durumu -- bkz. server/src/middleware/subscription.ts.
+  // Eşleşmemiş kullanıcılar için null.
+  entitlement: Entitlement | null;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -103,7 +118,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [locationSharedByPartner, setLocationSharedByPartner] = useState(false);
   const [locationSubmitting, setLocationSubmitting] = useState(false);
   const [backgroundLocationEnabled, setBackgroundLocationEnabled] = useState(false);
+  const [drivingShareEnabled, setDrivingShareEnabled] = useState(false);
+  const [drivingSubmitting, setDrivingSubmitting] = useState(false);
   const [hapticsEnabled, setHapticsEnabledState] = useState(true);
+  const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
+
+  // RevenueCat SDK'sını bir kez, uygulama açılışında yapılandırır. API
+  // anahtarı henüz girilmediyse (bkz. src/subscriptions/purchases.ts)
+  // sessizce hiçbir şey yapmaz.
+  useEffect(() => {
+    configureRevenueCat();
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -187,6 +212,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // syncBackgroundLocationTracking ile aynı desen, sürüş takibi görevi için
+  // -- bkz. drivingLocationTask.ts. Arka plan izni yoksa (kullanıcı normal
+  // mesafe paylaşımı için "her zaman izin ver" vermemiş olabilir) sürüş
+  // paylaşımı sunucuda açık görünse bile cihazda sessizce devre dışı kalır.
+  const syncDrivingLocationTracking = useCallback(async (shared: boolean) => {
+    try {
+      if (!shared) {
+        await stopDrivingLocationTracking();
+        return;
+      }
+      const bg = await Location.getBackgroundPermissionsAsync();
+      if (bg.status !== Location.PermissionStatus.GRANTED) {
+        return;
+      }
+      await startDrivingLocationTracking();
+    } catch {
+      // sessizce vazgeç -- bir sonraki refresh()'te tekrar denenir.
+    }
+  }, []);
+
   const applyMe = useCallback(
     (me: MeResponse) => {
       setUser(me.user);
@@ -195,11 +240,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setDistanceKm(me.distanceKm);
       setLocationSharedByMe(me.locationSharedByMe);
       setLocationSharedByPartner(me.locationSharedByPartner);
+      setDrivingShareEnabled(me.drivingShareEnabled);
+      setEntitlement(me.entitlement);
       // Fire-and-forget: ekranı bloklamaz, en kötü ihtimalle bir sonraki
       // refresh()'te tekrar denenir.
       syncBackgroundLocationTracking(me.locationSharedByMe);
+      syncDrivingLocationTracking(me.drivingShareEnabled);
+      // Çift bazlı abonelik: appUserID = coupleId, bkz.
+      // src/subscriptions/purchases.ts başındaki açıklama.
+      if (me.user.coupleId) {
+        loginRevenueCatCouple(me.user.coupleId);
+      }
     },
-    [syncBackgroundLocationTracking],
+    [syncBackgroundLocationTracking, syncDrivingLocationTracking],
   );
 
   // Konumu izin varsa sessizce paylaşır; izin yoksa/istenmezse ya da GPS/ağ
@@ -280,7 +333,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        await AsyncStorage.removeItem(TOKEN_KEY);
+        await deleteSecureItemAsync(TOKEN_KEY).catch(() => {});
         setAuthToken(null);
         setUser(null);
         setPartner(null);
@@ -288,8 +341,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setDistanceKm(null);
         setLocationSharedByMe(false);
         setLocationSharedByPartner(false);
+        setEntitlement(null);
         setStatus('signedOut');
+        return;
       }
+      // 401 dışındaki hatalar (ağ hatası, sunucu 5xx vb.) burada YUTULMAZ --
+      // çağırana (login/loginWithBiometric/başlangıç mount efekti vb.)
+      // iletilir ki kullanıcı sessizce takılı kalmak yerine anlamlı bir hata
+      // görsün. Fire-and-forget çağıran yerler (AppState dinleyicisi, 402
+      // handler'ı) bunu kendi .catch(() => {})'leriyle yutuyor.
+      throw e;
     }
   }, [applyMe, shareLocationBestEffort, registerPushTokenBestEffort]);
 
@@ -353,15 +414,78 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [refresh]);
 
+  // "Sürüş takibini paylaş" AÇILDIĞINDA: mesafe paylaşımından bağımsız
+  // olarak kendi "her zaman izin ver" konum iznini ister (mesafe paylaşımı
+  // hiç açılmamış olsa bile sürüş takibi tek başına açılabilsin diye) --
+  // bu izin olmadan sürüş algılama uygulama arka plandayken/kapalıyken
+  // çalışamaz.
+  const enableDrivingShare = useCallback(async () => {
+    setError(null);
+    setDrivingSubmitting(true);
+    try {
+      const current = await Location.getForegroundPermissionsAsync();
+      let granted = current.status === Location.PermissionStatus.GRANTED;
+      if (!granted) {
+        const requested = await Location.requestForegroundPermissionsAsync();
+        granted = requested.status === Location.PermissionStatus.GRANTED;
+      }
+      if (!granted) {
+        throw new Error('Konum izni verilmedi. Ayarlardan UsPulse için konum iznini açabilirsin.');
+      }
+      const bgCurrent = await Location.getBackgroundPermissionsAsync();
+      let bgGranted = bgCurrent.status === Location.PermissionStatus.GRANTED;
+      if (!bgGranted) {
+        const bgRequested = await Location.requestBackgroundPermissionsAsync();
+        bgGranted = bgRequested.status === Location.PermissionStatus.GRANTED;
+      }
+      if (!bgGranted) {
+        throw new Error(
+          'Sürüş takibi için "Her Zaman İzin Ver" konum izni gerekiyor. Ayarlar\'dan UsPulse için bunu açabilirsin.',
+        );
+      }
+      await api.put('/driving/share');
+      await startDrivingLocationTracking();
+      setDrivingShareEnabled(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Sürüş takibi açılamadı.');
+      throw e;
+    } finally {
+      setDrivingSubmitting(false);
+    }
+  }, []);
+
+  const disableDrivingShare = useCallback(async () => {
+    setError(null);
+    setDrivingSubmitting(true);
+    try {
+      await stopDrivingLocationTracking();
+      await api.delete('/driving/share');
+      setDrivingShareEnabled(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Sürüş takibi kapatılamadı.');
+      throw e;
+    } finally {
+      setDrivingSubmitting(false);
+    }
+  }, []);
+
   useEffect(() => {
     (async () => {
-      const stored = await AsyncStorage.getItem(TOKEN_KEY);
+      const stored = await getSecureItemAsync(TOKEN_KEY).catch(() => null);
       if (!stored) {
         setStatus('signedOut');
         return;
       }
       setAuthToken(stored);
-      await refresh();
+      try {
+        await refresh();
+      } catch {
+        // Açılışta geçici bir ağ hatası olursa kullanıcı sonsuza dek
+        // "loading" ekranında takılı kalmasın diye signedOut'a düşürüyoruz --
+        // token hâlâ cihazda duruyor, bir sonraki başarılı refresh()'te
+        // (ör. AppState foreground) normal şekilde signedIn'e döner.
+        setStatus('signedOut');
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -376,13 +500,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
         registerPushTokenBestEffort();
+        // Deneme/abonelik süresi uygulama arka plandayken/kapalıyken dolmuş
+        // olabilir -- her ön plana dönüşte entitlement'ı da tazeliyoruz ki
+        // RootNavigator gerekirse Paywall'a yönlendirsin. Aksi halde
+        // kullanıcı uygulamayı kapatıp yeniden açana kadar "donuk" bir ana
+        // ekranda kalabiliyordu (bkz. aşağıdaki 402 handler'ı da). refresh()
+        // artık 401 dışındaki hataları fırlatabiliyor -- burada fire-and-
+        // forget çağırdığımız için yutuyoruz, bir sonraki ön plana dönüşte
+        // tekrar denenir.
+        refresh().catch(() => {});
       }
     });
     return () => subscription.remove();
-  }, [status, user?.coupleId, registerPushTokenBestEffort]);
+  }, [status, user?.coupleId, registerPushTokenBestEffort, refresh]);
+
+  // Herhangi bir API isteği sunucudan 402 (deneme/abonelik süresi doldu)
+  // dönerse, hangi ekranda olunursa olsun entitlement'ı hemen yeniden çeker
+  // -- bu, RootNavigator'ın kullanıcıyı Paywall'a yönlendirmesini tetikler.
+  // Tek tek ekranların kendi catch bloklarında bunu ele almasına gerek
+  // bırakmıyor (bkz. src/api/client.ts setEntitlementBlockedHandler).
+  useEffect(() => {
+    setEntitlementBlockedHandler(() => {
+      // Fire-and-forget: refresh() artık 401 dışındaki hataları fırlatabiliyor.
+      refresh().catch(() => {});
+    });
+    return () => setEntitlementBlockedHandler(null);
+  }, [refresh]);
 
   const handleAuthResponse = useCallback(async (res: AuthResponse) => {
-    await AsyncStorage.setItem(TOKEN_KEY, res.token);
+    await setSecureItemAsync(TOKEN_KEY, res.token);
     setAuthToken(res.token);
     setUser(res.user);
     setPartner(null);
@@ -434,21 +580,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [handleAuthResponse, refresh],
   );
 
-  const loginWithFacebook = useCallback(
-    async (accessToken: string) => {
-      setError(null);
-      try {
-        const res = await api.post<AuthResponse>('/auth/facebook', { accessToken });
-        await handleAuthResponse(res);
-        await refresh();
-      } catch (e) {
-        setError(e instanceof Error ? e.message : 'Facebook ile giriş başarısız oldu.');
-        throw e;
-      }
-    },
-    [handleAuthResponse, refresh],
-  );
-
   const forgotPassword = useCallback(async (email: string) => {
     setError(null);
     try {
@@ -491,13 +622,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(async () => {
     // Bu cihaz artık bildirim almamalı -- jetonu silmeyi dene (auth başlığı
     // hâlâ geçerliyken, token'ı temizlemeden önce). Başarısız olursa önemli
-    // değil, çıkışı engellemesin.
+    // değil, çıkışı engellemesin. Aşağıdaki tüm adımlar, biri hata fırlatsa
+    // bile çıkış işleminin tamamlanması (ve yakalanmamış bir promise reddi
+    // oluşmaması) için ayrı ayrı yutuluyor.
     await api.delete('/me/push-token').catch(() => {});
     // Arka plan konum takibi de durmalı: çıkış yapılmış bir cihaz artık
     // konum göndermemeli.
     await stopBackgroundLocationTracking().catch(() => {});
     setBackgroundLocationEnabled(false);
-    await AsyncStorage.removeItem(TOKEN_KEY);
+    await stopDrivingLocationTracking().catch(() => {});
+    setDrivingShareEnabled(false);
+    await logoutRevenueCat().catch(() => {});
+    await deleteSecureItemAsync(TOKEN_KEY).catch(() => {});
     setAuthToken(null);
     setUser(null);
     setPartner(null);
@@ -505,6 +641,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setDistanceKm(null);
     setLocationSharedByMe(false);
     setLocationSharedByPartner(false);
+    setEntitlement(null);
     setStatus('signedOut');
     // Face ID / parmak izi kaydı bilerek silinmiyor: kullanıcı çıkış yapıp
     // aynı cihazdan tekrar açtığında yine biyometrik olarak girebilsin diye.
@@ -519,12 +656,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setError(e instanceof Error ? e.message : 'Hesap silinemedi.');
       throw e;
     }
-    // Hesap sunucuda silindi; cihazdaki oturum/biyometrik izleri de temizlenir.
+    // Hesap sunucuda ARTIK SİLİNDİ -- buradan sonraki adımlar sadece
+    // cihazdaki yerel izleri temizliyor. Biri başarısız olsa bile hesap
+    // zaten silinmiş olduğundan kullanıcıya yanlış bir "hesap silinemedi"
+    // hatası göstermemek için hepsini ayrı ayrı yutuyoruz ve state'i her
+    // koşulda sıfırlıyoruz (aksi halde kullanıcı, artık var olmayan bir
+    // hesapla "signed in" gibi takılı bir ekranda kalabilirdi).
     await stopBackgroundLocationTracking().catch(() => {});
     setBackgroundLocationEnabled(false);
-    await AsyncStorage.removeItem(TOKEN_KEY);
-    await SecureStore.deleteItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
-    await AsyncStorage.removeItem(BIOMETRIC_FLAG_KEY);
+    await stopDrivingLocationTracking().catch(() => {});
+    setDrivingShareEnabled(false);
+    await logoutRevenueCat().catch(() => {});
+    await deleteSecureItemAsync(TOKEN_KEY).catch(() => {});
+    await deleteSecureItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
+    await AsyncStorage.removeItem(BIOMETRIC_FLAG_KEY).catch(() => {});
     setAuthToken(null);
     setUser(null);
     setPartner(null);
@@ -532,22 +677,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setDistanceKm(null);
     setLocationSharedByMe(false);
     setLocationSharedByPartner(false);
+    setEntitlement(null);
     setBiometricEnabled(false);
     setStatus('signedOut');
   }, []);
 
   const enableBiometric = useCallback(async () => {
-    const token = await AsyncStorage.getItem(TOKEN_KEY);
+    const token = await getSecureItemAsync(TOKEN_KEY);
     if (!token) {
       throw new Error('Biyometrik girişi etkinleştirmek için önce giriş yapmalısın.');
     }
-    await SecureStore.setItemAsync(BIOMETRIC_TOKEN_KEY, token);
+    await setSecureItemAsync(BIOMETRIC_TOKEN_KEY, token);
     await AsyncStorage.setItem(BIOMETRIC_FLAG_KEY, '1');
     setBiometricEnabled(true);
   }, []);
 
   const disableBiometric = useCallback(async () => {
-    await SecureStore.deleteItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
+    await deleteSecureItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
     await AsyncStorage.removeItem(BIOMETRIC_FLAG_KEY);
     setBiometricEnabled(false);
   }, []);
@@ -568,11 +714,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!result.success) {
         throw new Error('Kimlik doğrulama tamamlanamadı.');
       }
-      const token = await SecureStore.getItemAsync(BIOMETRIC_TOKEN_KEY);
+      const token = await getSecureItemAsync(BIOMETRIC_TOKEN_KEY);
       if (!token) {
         throw new Error('Kayıtlı bir oturum bulunamadı. Lütfen şifreyle giriş yap.');
       }
-      await AsyncStorage.setItem(TOKEN_KEY, token);
+      await setSecureItemAsync(TOKEN_KEY, token);
       setAuthToken(token);
       await refresh();
     } catch (e) {
@@ -593,7 +739,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       register,
       loginWithGoogle,
-      loginWithFacebook,
       forgotPassword,
       resetPassword,
       pair,
@@ -614,8 +759,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       shareLocationNow,
       stopSharingLocation,
       backgroundLocationEnabled,
+      drivingShareEnabled,
+      drivingSubmitting,
+      enableDrivingShare,
+      disableDrivingShare,
       hapticsEnabled,
       setHapticsEnabled,
+      entitlement,
     }),
     [
       status,
@@ -626,7 +776,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       register,
       loginWithGoogle,
-      loginWithFacebook,
       forgotPassword,
       resetPassword,
       pair,
@@ -647,8 +796,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       shareLocationNow,
       stopSharingLocation,
       backgroundLocationEnabled,
+      drivingShareEnabled,
+      drivingSubmitting,
+      enableDrivingShare,
+      disableDrivingShare,
       hapticsEnabled,
       setHapticsEnabled,
+      entitlement,
     ],
   );
 

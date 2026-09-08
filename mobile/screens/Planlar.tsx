@@ -162,6 +162,12 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
   const [reunionLocation, setReunionLocation] = useState('');
   const [reunionDate, setReunionDate] = useState('');
 
+  // Tek seferde yalnızca bir modal açık olabildiği için tek bir "gönderiliyor"
+  // bayrağı yeterli -- hem çift-tıklamayı (aynı isteğin iki kez atılmasını)
+  // engeller hem de aşağıdaki her yazma işlemine try/catch ile kullanıcıya
+  // görünür bir hata mesajı ekliyor (önceden sessizce yutuluyordu).
+  const [submitting, setSubmitting] = useState(false);
+
   const load = useCallback(async () => {
     try {
       const [planRes, savingsRes] = await Promise.all([
@@ -189,12 +195,15 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
   const checklist = plans.filter((p) => p.category === 'plan');
   const doneCount = checklist.filter((p) => p.done).length;
   const checklistProgress = checklist.length > 0 ? doneCount / checklist.length : 0;
-  const mainGoal = savings[0];
   const countdownDays = reunionCountdown(couple?.reunion_date);
 
   const toggleChecklist = async (item: PlanItem) => {
-    await api.patch<PlanItem>(`/plans/${item.id}`, { done: !item.done });
-    load();
+    try {
+      await api.patch<PlanItem>(`/plans/${item.id}`, { done: !item.done });
+      load();
+    } catch {
+      Alert.alert('Güncellenemedi', 'Lütfen tekrar dene.');
+    }
   };
 
   const advanceMeeting = async () => {
@@ -223,28 +232,39 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
   };
 
   const submitAdd = async () => {
-    if (!addCategory || !addTitle.trim()) return;
-    if (editingItem) {
-      await api.patch(`/plans/${editingItem.id}`, {
-        title: addTitle.trim(),
-        subtitle: addSubtitle.trim() || null,
-      });
-    } else {
-      await api.post('/plans', {
-        category: addCategory,
-        title: addTitle.trim(),
-        subtitle: addSubtitle.trim() || undefined,
-      });
+    if (!addCategory || !addTitle.trim() || submitting) return;
+    setSubmitting(true);
+    try {
+      if (editingItem) {
+        await api.patch(`/plans/${editingItem.id}`, {
+          title: addTitle.trim(),
+          subtitle: addSubtitle.trim() || null,
+        });
+      } else {
+        await api.post('/plans', {
+          category: addCategory,
+          title: addTitle.trim(),
+          subtitle: addSubtitle.trim() || undefined,
+        });
+      }
+      closeItemModal();
+      load();
+    } catch {
+      Alert.alert('Kaydedilemedi', 'Lütfen tekrar dene.');
+    } finally {
+      setSubmitting(false);
     }
-    closeItemModal();
-    load();
   };
 
   const deleteItem = (item: PlanItem) => {
     confirmDelete(item.title, async () => {
-      await api.delete(`/plans/${item.id}`);
-      if (editingItem?.id === item.id) closeItemModal();
-      load();
+      try {
+        await api.delete(`/plans/${item.id}`);
+        if (editingItem?.id === item.id) closeItemModal();
+        load();
+      } catch {
+        Alert.alert('Silinemedi', 'Lütfen tekrar dene.');
+      }
     });
   };
 
@@ -255,16 +275,27 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
 
   const submitContribute = async () => {
     const amount = Number(contributeAmount);
-    if (!contributeGoal || !amount || amount <= 0) return;
-    await api.post(`/savings/${contributeGoal.id}/contribute`, { amount });
-    setContributeGoal(null);
-    load();
+    if (!contributeGoal || !Number.isFinite(amount) || amount <= 0 || submitting) return;
+    setSubmitting(true);
+    try {
+      await api.post(`/savings/${contributeGoal.id}/contribute`, { amount });
+      setContributeGoal(null);
+      load();
+    } catch {
+      Alert.alert('Eklenemedi', 'Lütfen tekrar dene.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const deleteContribution = (goal: SavingsGoal, contributionId: string, label: string) => {
     confirmDelete(label, async () => {
-      await api.delete(`/savings/${goal.id}/contribute/${contributionId}`);
-      load();
+      try {
+        await api.delete(`/savings/${goal.id}/contribute/${contributionId}`);
+        load();
+      } catch {
+        Alert.alert('Silinemedi', 'Lütfen tekrar dene.');
+      }
     });
   };
 
@@ -276,21 +307,33 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
   };
 
   const submitEditGoal = async () => {
-    if (!editGoal || !goalTitle.trim() || !Number(goalTarget)) return;
-    await api.patch(`/savings/${editGoal.id}`, {
-      title: goalTitle.trim(),
-      targetAmount: Number(goalTarget),
-      note: goalNote.trim() || null,
-    });
-    setEditGoal(null);
-    load();
+    if (!editGoal || !goalTitle.trim() || !Number.isFinite(Number(goalTarget)) || !Number(goalTarget) || submitting)
+      return;
+    setSubmitting(true);
+    try {
+      await api.patch(`/savings/${editGoal.id}`, {
+        title: goalTitle.trim(),
+        targetAmount: Number(goalTarget),
+        note: goalNote.trim() || null,
+      });
+      setEditGoal(null);
+      load();
+    } catch {
+      Alert.alert('Kaydedilemedi', 'Lütfen tekrar dene.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const deleteGoal = (goal: SavingsGoal) => {
     confirmDelete(goal.title, async () => {
-      await api.delete(`/savings/${goal.id}`);
-      setEditGoal(null);
-      load();
+      try {
+        await api.delete(`/savings/${goal.id}`);
+        setEditGoal(null);
+        load();
+      } catch {
+        Alert.alert('Silinemedi', 'Lütfen tekrar dene.');
+      }
     });
   };
 
@@ -302,13 +345,21 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
   };
 
   const submitReunion = async () => {
-    await api.put('/reunion', {
-      title: reunionTitle.trim() || null,
-      location: reunionLocation.trim() || null,
-      date: reunionDate.trim() || null,
-    });
-    setReunionModalOpen(false);
-    refresh();
+    if (submitting) return;
+    setSubmitting(true);
+    try {
+      await api.put('/reunion', {
+        title: reunionTitle.trim() || null,
+        location: reunionLocation.trim() || null,
+        date: reunionDate.trim() || null,
+      });
+      setReunionModalOpen(false);
+      refresh();
+    } catch {
+      Alert.alert('Kaydedilemedi', 'Lütfen tekrar dene.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -596,7 +647,7 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
               <Pressable style={styles.modalCancel} onPress={closeItemModal}>
                 <Text style={styles.modalCancelText}>Vazgeç</Text>
               </Pressable>
-              <Pressable style={styles.modalConfirm} onPress={submitAdd} disabled={!addTitle.trim()}>
+              <Pressable style={styles.modalConfirm} onPress={submitAdd} disabled={!addTitle.trim() || submitting}>
                 <Text style={styles.modalConfirmText}>{editingItem ? 'Kaydet' : 'Ekle'}</Text>
               </Pressable>
             </View>
@@ -627,7 +678,7 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
               <Pressable style={styles.modalCancel} onPress={() => setContributeGoal(null)}>
                 <Text style={styles.modalCancelText}>Vazgeç</Text>
               </Pressable>
-              <Pressable style={styles.modalConfirm} onPress={submitContribute}>
+              <Pressable style={styles.modalConfirm} onPress={submitContribute} disabled={submitting}>
                 <Text style={styles.modalConfirmText}>Ekle</Text>
               </Pressable>
             </View>
@@ -668,11 +719,15 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
               </Pressable>
               <Pressable
                 style={styles.modalConfirm}
-                disabled={!goalTitle.trim() || !Number(goalTarget)}
+                disabled={!goalTitle.trim() || !Number.isFinite(Number(goalTarget)) || !Number(goalTarget) || submitting}
                 onPress={async () => {
                   if (editGoal?.id) {
                     await submitEditGoal();
-                  } else {
+                    return;
+                  }
+                  if (submitting) return;
+                  setSubmitting(true);
+                  try {
                     await api.post('/savings', {
                       title: goalTitle.trim(),
                       targetAmount: Number(goalTarget),
@@ -680,6 +735,10 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
                     });
                     setEditGoal(null);
                     load();
+                  } catch {
+                    Alert.alert('Oluşturulamadı', 'Lütfen tekrar dene.');
+                  } finally {
+                    setSubmitting(false);
                   }
                 }}
               >
@@ -726,7 +785,7 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
               <Pressable style={styles.modalCancel} onPress={() => setReunionModalOpen(false)}>
                 <Text style={styles.modalCancelText}>Vazgeç</Text>
               </Pressable>
-              <Pressable style={styles.modalConfirm} onPress={submitReunion}>
+              <Pressable style={styles.modalConfirm} onPress={submitReunion} disabled={submitting}>
                 <Text style={styles.modalConfirmText}>Kaydet</Text>
               </Pressable>
             </View>
