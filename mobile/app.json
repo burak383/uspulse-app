@@ -29,7 +29,7 @@
     },
     "android": {
       "package": "app.uspulse.mobile",
-      "versionCode": 4,
+      "versionCode": 5,
       "adaptiveIcon": {
         "backgroundColor": "#34243A",
         "foregroundImage": "./assets/adaptive-icon.png"
