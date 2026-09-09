@@ -29,12 +29,14 @@ jobs:
       # yazmak güvenli.
       EXPO_PUBLIC_API_URL: https://uspulse-backend.onrender.com/api
       # Google ile giriş artık native @react-native-google-signin/google-signin
-      # kullanıyor (bkz. mobile/.env.example) -- Web client ID'yi Google Cloud
-      # Console'da oluşturduktan sonra burayı doldur, aşağıdaki gibi:
-      # EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: <WEB_CLIENT_ID>.apps.googleusercontent.com
-      # Bu APK debug keystore ile imzalandığından, Google Cloud Console'daki
-      # Android istemcisine debug keystore'un SHA-1'ini de eklemen gerekir:
-      #   keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android
+      # kullanıyor (bkz. mobile/.env.example). Bu APK, "expo prebuild"in her
+      # zaman ürettiği sabit/paylaşılan Expo debug keystore'uyla imzalanır --
+      # SHA-1'i 5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25,
+      # bu SHA-1 hem Google Sign-In Android istemcisine hem de Maps API
+      # anahtarının "Application restrictions" listesine eklendi (bkz. sohbet
+      # geçmişi) -- o yüzden Google ile giriş ve harita bu debug build'de de
+      # release build'deki gibi çalışır.
+      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 50264949461-gf01td1a3d5sum2c3vvjujnglvkc2q98.apps.googleusercontent.com
  
     steps:
       - name: Kodu çek
