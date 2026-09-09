@@ -1,0 +1,115 @@
+name: Android Release AAB derle (imzalı)
+ 
+# EAS'a hiç ihtiyaç duymadan (bu ayki bulut build kotan bitmiş olsa bile),
+# GitHub'ın ücretsiz Linux runner'ında native projeyi üretip (expo prebuild)
+# KENDİ release keystore'unla imzalı bir .aab üretir -- Play Console'a
+# doğrudan yüklenebilir. Bu dosyayı çalıştırmadan önce repo'ya şu 4 GitHub
+# secret'ını eklemen GEREKİYOR (Settings > Secrets and variables > Actions):
+#   ANDROID_RELEASE_KEYSTORE_BASE64   -- keystore dosyanın base64 hali
+#   ANDROID_RELEASE_KEYSTORE_PASSWORD -- keystore şifresi
+#   ANDROID_RELEASE_KEY_ALIAS         -- key alias
+#   ANDROID_RELEASE_KEY_PASSWORD      -- key şifresi
+# Bu 4 değeri nereden alacağını ve nasıl ekleyeceğini sohbette ayrıca
+# anlattım -- en güvenli yol, EAS'in zaten senin için oluşturduğu keystore'u
+# "eas credentials" ile indirip aynısını kullanmak (imzalama sertifikası
+# değişmesin, ileride EAS build'e dönersen ya da Play Console zaten bir
+# sürüm gördüyse sorun çıkmasın diye).
+#
+# Bilerek SADECE elle tetiklenir -- bu, gerçek mağaza sürümü ürettiği için
+# yanlışlıkla her push'ta çalışmasını istemeyiz.
+on:
+  workflow_dispatch: {}
+ 
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      EXPO_PUBLIC_API_URL: https://uspulse-backend.onrender.com/api
+      EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: 50264949461-vj8hu4mrt4u22nknp6itm9jo5qmra2m1.apps.googleusercontent.com
+ 
+    steps:
+      - name: Kodu çek
+        uses: actions/checkout@v4
+ 
+      - name: Node.js kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+ 
+      - name: Bağımlılıkları kur
+        working-directory: mobile
+        run: npm ci
+ 
+      - name: JDK 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+ 
+      - name: Native Android projesini oluştur (expo prebuild)
+        working-directory: mobile
+        run: npx expo prebuild --platform android --no-install
+ 
+      - name: Release keystore'u geri yükle
+        working-directory: mobile/android/app
+        run: echo "${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}" | base64 -d > release.keystore
+ 
+      - name: build.gradle'a release imzalama ayarını ekle
+        # expo prebuild'in ürettiği build.gradle, release build type'ı
+        # BİLEREK debug keystore ile imzalıyor ("Caution! In production,
+        # you need to generate your own keystore file." yorumuyla) --
+        # android/ klasörü her prebuild'de sıfırdan üretildiği için bu
+        # düzenlemeyi kalıcı olarak repoya değil, HER ÇALIŞTIRMADA burada
+        # yapıyoruz.
+        working-directory: mobile/android/app
+        run: |
+          python3 - <<'PY'
+          path = "build.gradle"
+          with open(path) as f:
+              content = f.read()
+ 
+          release_signing_config = '''        release {
+                  storeFile file("release.keystore")
+                  storePassword System.getenv("ANDROID_RELEASE_KEYSTORE_PASSWORD")
+                  keyAlias System.getenv("ANDROID_RELEASE_KEY_ALIAS")
+                  keyPassword System.getenv("ANDROID_RELEASE_KEY_PASSWORD")
+              }
+          '''
+          marker = "    signingConfigs {\n        debug {"
+          assert marker in content, "signingConfigs bloğu beklenen şekilde bulunamadı -- expo prebuild çıktısı değişmiş olabilir."
+          content = content.replace(marker, "    signingConfigs {\n" + release_signing_config + "        debug {")
+ 
+          old_release_block = (
+              "        release {\n"
+              "            // Caution! In production, you need to generate your own keystore file.\n"
+              "            // see https://reactnative.dev/docs/signed-apk-android.\n"
+              "            signingConfig signingConfigs.debug\n"
+          )
+          assert old_release_block in content, "release buildType bloğu beklenen şekilde bulunamadı -- expo prebuild çıktısı değişmiş olabilir."
+          content = content.replace(old_release_block, "        release {\n            signingConfig signingConfigs.release\n")
+ 
+          with open(path, "w") as f:
+              f.write(content)
+          print("build.gradle güncellendi: release artık kendi keystore'unla imzalanacak.")
+          PY
+ 
+      - name: gradlew'i çalıştırılabilir yap
+        run: chmod +x mobile/android/gradlew
+ 
+      - name: İmzalı release .aab derle
+        working-directory: mobile/android
+        env:
+          ANDROID_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEYSTORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+        run: ./gradlew bundleRelease --no-daemon
+ 
+      - name: .aab'ı Actions artifact olarak yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: uspulse-release-aab
+          path: mobile/android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 30
