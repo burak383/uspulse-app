@@ -11,7 +11,7 @@ Orijinal ZIP'te **her ekran çöküyordu**: `theme.ts` sadece `Colors`/`Fonts`/`
 
 Ayrıca uygulamadaki her veri türü artık uçtan uca **düzenlenebilir ve silinebilir**: dilek listesi/kontrol listesi öğeleri, birikim hedefleri ve katkıları, buluşma bilgisi, anılar ve zaman kapsülleri - hepsinde kalem (düzenle) ve çöp kutusu (sil) ikon butonları var, hepsi gerçek `PATCH`/`DELETE` uçlarına bağlı. Ekranlardaki tüm `Pressable` butonlar taranıp (`onPress` denetimiyle) çalışmayan/boş buton kalmadığı doğrulandı; anlamsız kalan birkaç buton (Yuva'daki hızlı-ekle döşemeleri, bildirim zili, Lizbon örnek ekranındaki "..." menüsü) da gerçek işlevlere bağlandı.
 
-Giriş ekranına da üç yeni gerçek akış eklendi: **şifremi unuttum** (kod tabanlı sıfırlama), **Face ID / parmak izi ile hızlı giriş** ve **Google ile giriş**. Üçü de gerçek backend uçlarına ve gerçek native API'lere bağlı - detaylar için aşağıdaki "Giriş, şifre sıfırlama, Face ID, Google" bölümüne bakın.
+Giriş ekranına da iki yeni gerçek akış eklendi: **şifremi unuttum** (kod tabanlı sıfırlama) ve **Google ile giriş**. İkisi de gerçek backend uçlarına ve gerçek native API'lere bağlı - detaylar için aşağıdaki "Giriş, şifre sıfırlama, Google" bölümüne bakın.
 
 ## Hızlı başlangıç
 
@@ -21,16 +21,10 @@ Giriş ekranına da üç yeni gerçek akış eklendi: **şifremi unuttum** (kod 
 cd server
 cp .env.example .env
 npm install
-npm run seed   # demo çift oluşturur: Elif & Deniz
 npm run dev    # http://localhost:4000
 ```
 
-Demo giriş bilgileri (seed script çalıştıktan sonra terminalde de yazar):
-
-- `elif@uspulse.app` / `uspulse1234`
-- `deniz@uspulse.app` / `uspulse1234`
-
-Bu iki hesap zaten birbiriyle eşleşmiş durumda ve tasarımdaki tüm sayılarla (27 günlük seri, Kaş Kaçamağı birikimi %56, vs.) uyumlu demo verisiyle geliyor.
+Otomatik oluşturulan bir demo hesap yok - `POST /api/auth/register` ile kendi hesabınızı oluşturup `POST /api/auth/pair` (mobil tarafta Eşleş ekranındaki davet kodu akışı) ile eşleşin.
 
 ### 2) Mobil uygulamayı çalıştırın
 
@@ -65,7 +59,7 @@ Tüm uçlar `Authorization: Bearer <token>` bekler (auth uçları hariç).
 | `GET/POST/PATCH/DELETE /api/plans` | Dilek listesi + ortak kontrol listesi |
 | `GET/POST/PATCH/DELETE /api/savings`, `POST /api/savings/:id/contribute`, `DELETE /api/savings/:id/contribute/:contributionId` | Ortak birikim + katkılar |
 
-## Giriş, şifre sıfırlama, Face ID, Google
+## Giriş, şifre sıfırlama, Google
 
 ### Şifremi unuttum
 
@@ -73,22 +67,18 @@ Giriş ekranındaki "Şifremi unuttum" linki iki adımlı gerçek bir akış aç
 
 **Önemli sınırlama:** Bu demo backend'ine e-posta/SMS gönderen bir servis (Postmark, SendGrid, Twilio vb.) bağlı değil, yani kod hiçbir yere "gönderilmiyor". Bunun yerine kod sunucu konsoluna yazdırılıyor ve `NODE_ENV=production` olmadığı sürece API yanıtındaki `devCode` alanında da dönüyor - uygulama bu alanı görürse kodu otomatik olarak forma dolduruyor, böylece akış gerçek bir e-posta servisi olmadan da uçtan uca test edilebiliyor. Gerçek kullanıcılarla kullanmadan önce bir e-posta/SMS sağlayıcısı entegre edip `devCode` alanını (zaten `NODE_ENV=production` iken otomatik kapanıyor) kaldırmanız gerekir.
 
-### Face ID / parmak izi ile hızlı giriş
-
-`expo-local-authentication` + `expo-secure-store` ile gerçek, çalışan bir biyometrik giriş var. Şifreyle ilk girişten sonra uygulama "Face ID ile hızlı giriş etkinleştirilsin mi?" diye sorar; evet dersen o oturumun jetonu cihazın güvenli deposuna (Keychain/Keystore) yazılır. Bir dahaki açılışta giriş ekranında "Face ID ile giriş yap" (ya da cihaza göre "Parmak izi ile giriş yap") butonu belirir. Bunun çalışması için fiziksel bir cihazda (ya da biyometri simüle edilmiş bir simülatörde/emülatörde) Face ID/parmak izinin kurulu olması gerekir - kurulu değilse buton hiç görünmez.
-
 ### Google ile giriş
 
-Giriş ekranındaki "Google ile giriş yap" butonu `expo-auth-session`'ın Google sağlayıcısını kullanır; backend'de `/api/auth/google` gelen jetonu Google'ın `tokeninfo` uç noktasıyla doğrular, `aud` değerini sizin istemci kimliklerinizle karşılaştırır, e-postayı doğrulanmış bulursa hesabı bulur (ya da e-posta eşleşiyorsa mevcut hesaba Google'ı bağlar, hiçbiri yoksa şifresiz yeni bir hesap açar).
+Giriş ekranındaki "Google ile giriş yap" butonu native `@react-native-google-signin/google-signin` kütüphanesini kullanır (Expo'nun `expo-auth-session` tabanlı tarayıcı akışı deprecated ilan edildi ve Google artık bunu reddediyor); backend'de `/api/auth/google` gelen jetonu Google'ın `tokeninfo` uç noktasıyla doğrular, `aud` değerini sizin istemci kimliklerinizle karşılaştırır, e-postayı doğrulanmış bulursa hesabı bulur (ya da e-posta eşleşiyorsa mevcut hesaba Google'ı bağlar, hiçbiri yoksa şifresiz yeni bir hesap açar).
 
 Bunu çalıştırmak için kendi Google OAuth istemci kimliklerinizi girmeniz gerekir - bunlar proje bazlı olduğu için sizin adınıza oluşturamayız:
 
 1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials)'da bir proje açın, OAuth onay ekranını yapılandırın.
-2. İhtiyacınız olan platformlar için OAuth istemci kimlikleri oluşturun (iOS, Android, Web - kullandığınız platformlar kadarı yeterli).
-3. Bu kimlikleri `server/.env` içindeki `GOOGLE_CLIENT_IDS`e (virgülle ayırarak, jetonu doğrulayan asıl kontrol burada yapılıyor) ve `mobile/.env` içindeki ilgili `EXPO_PUBLIC_GOOGLE_*_CLIENT_ID` değişkenlerine ekleyin.
+2. Bir **Web application** tipinde OAuth istemcisi oluşturun (her iki platformda da `webClientId` olarak kullanılır, jetonun `aud` alanı buna göre doğrulanır) ve ayrıca uygulamanın paket adı (`app.uspulse.mobile`) + imzalayan keystore'un SHA-1 parmak iziyle bir **Android** istemcisi (iOS için bundle ID ile bir **iOS** istemcisi) kaydedin.
+3. Web istemci kimliğini `server/.env` içindeki `GOOGLE_CLIENT_IDS`e (virgülle ayırarak, jetonu doğrulayan asıl kontrol burada yapılıyor) ve `mobile/.env` içindeki `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`'ye ekleyin.
 4. Hiçbiri girilmemişse buton yine görünür ama tıklandığında ne yapılması gerektiğini açıklayan bir uyarı gösterir - sessizce hiçbir şey yapmaz.
 
-**Not:** Google'ın OAuth yönlendirmesi native bir "custom scheme" gerektirir (`app.json`'a `"scheme": "uspulse"` zaten eklendi); bazı platformlarda bunun güvenilir çalışması için Expo Go yerine bir geliştirme derlemesi (`npx expo prebuild` + EAS dev client ya da yerel bir derleme) gerekebilir.
+**Not:** Native kod içerdiği için Expo Go'da çalışmaz - `npx expo prebuild` + EAS/yerel bir derleme (dev client, debug ya da release build) gerekir.
 
 ## Kapsam dışı bırakılanlar (bilerek)
 

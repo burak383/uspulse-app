@@ -66,18 +66,13 @@
     },
     "plugins": [
       "expo-secure-store",
-      [
-        "expo-local-authentication",
-        {
-          "faceIDPermission": "Hesabına hızlıca giriş yapmak için Face ID kullanılır."
-        }
-      ],
+      "@react-native-google-signin/google-signin",
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Partnerinle aranızdaki yaklaşık mesafeyi hesaplayabilmek için konumun kullanılır. Kesin konumun partnerine gösterilmez, sadece aradaki mesafe paylaşılır -- Sürüş takibini ayrıca açarsan, sürüş halindeyken hızın ve rotan istisnai olarak partnerine gösterilir.",
-          "locationAlwaysAndWhenInUsePermission": "Konum paylaşımını açtığında, uygulama kapalıyken/arka plandayken bile partnerinle aranızdaki yaklaşık mesafeyi güncel tutabilmek için konumun kullanılır. Kesin konumun partnerine gösterilmez, sadece aradaki mesafe paylaşılır -- Sürüş takibini ayrıca açarsan, sürüş halindeyken hızın ve rotan istisnai olarak partnerine gösterilir.",
-          "locationAlwaysPermission": "Konum paylaşımını açtığında, uygulama kapalıyken/arka plandayken bile partnerinle aranızdaki yaklaşık mesafeyi güncel tutabilmek için konumun kullanılır. Kesin konumun partnerine gösterilmez, sadece aradaki mesafe paylaşılır -- Sürüş takibini ayrıca açarsan, sürüş halindeyken hızın ve rotan istisnai olarak partnerine gösterilir.",
+          "locationWhenInUsePermission": "Konum paylaşımını açtığında, ikiniz de paylaşıma açıksa konumun partnerine haritada canlı gösterilir ve aranızdaki mesafe hesaplanır. Sürüş takibini ayrıca açarsan, sürüş halindeyken hızın ve rotan da partnerine gösterilir.",
+          "locationAlwaysAndWhenInUsePermission": "Konum paylaşımını açtığında, uygulama kapalıyken/arka plandayken bile konumun güncel kalması için kullanılır -- ikiniz de paylaşıma açıksa partnerine haritada canlı gösterilir ve aranızdaki mesafe hesaplanır. Sürüş takibini ayrıca açarsan, sürüş halindeyken hızın ve rotan da partnerine gösterilir.",
+          "locationAlwaysPermission": "Konum paylaşımını açtığında, uygulama kapalıyken/arka plandayken bile konumun güncel kalması için kullanılır -- ikiniz de paylaşıma açıksa partnerine haritada canlı gösterilir ve aranızdaki mesafe hesaplanır. Sürüş takibini ayrıca açarsan, sürüş halindeyken hızın ve rotan da partnerine gösterilir.",
           "isIosBackgroundLocationEnabled": true,
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true

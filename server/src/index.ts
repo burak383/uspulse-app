@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
-import { seedDemoData } from './seed';
 import legalRouter from './routes/legal';
 import downloadRouter from './routes/download';
 import authRouter from './routes/auth';
@@ -40,13 +39,6 @@ if (isRenderDeploy && !process.env.JWT_SECRET) {
       'herkesçe bilinen bir anahtarla imzalanır.',
   );
   process.exit(1);
-}
-if (isRenderDeploy && process.env.AUTO_SEED !== 'false') {
-  console.warn(
-    'UYARI: AUTO_SEED kapalı değil -- bu canlı Render dağıtımı her yeniden başlayışta demo hesapları ' +
-      '(elif@uspulse.app / deniz@uspulse.app) otomatik oluşturacak. Kalıcı diske geçtikten sonra Dashboard\'dan ' +
-      'AUTO_SEED=false ayarlamayı düşün.',
-  );
 }
 
 const app = express();
@@ -104,20 +96,6 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   console.error(err);
   res.status(500).json({ error: 'Sunucu hatası.' });
 });
-
-// Ücretsiz Render planında dosya sistemi kalıcı değil: servis her uyanışta/
-// yeniden başlayışta SQLite dosyası sıfırlanıyor ve Shell sekmesi (npm run
-// seed) ücretsiz planda kullanılamıyor. Bu yüzden demo verisini her
-// başlangıçta otomatik oluşturuyoruz; seedDemoData() zaten var olan kayıtları
-// atladığı için (idempotent) veri zaten duruyorsa hiçbir şeyi değiştirmez.
-// Devre dışı bırakmak istersen ortam değişkeni olarak AUTO_SEED=false ekle.
-if (process.env.AUTO_SEED !== 'false') {
-  try {
-    seedDemoData();
-  } catch (err) {
-    console.error('Demo verisi oluşturulurken hata oluştu:', err);
-  }
-}
 
 const PORT = Number(process.env.PORT) || 4000;
 app.listen(PORT, () => {

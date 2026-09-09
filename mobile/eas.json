@@ -20,7 +20,7 @@
     "production": {
       "env": {
         "EXPO_PUBLIC_API_URL": "https://uspulse-backend.onrender.com/api",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "50264949461-vj8hu4mrt4u22nknp6itm9jo5qmra2m1.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "50264949461-gf01td1a3d5sum2c3vvjujnglvkc2q98.apps.googleusercontent.com"
       }
     }
   },

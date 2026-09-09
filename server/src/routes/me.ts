@@ -118,7 +118,7 @@ router.delete('/push-token', requireAuth, (req, res) => {
 });
 
 // Profil fotoğrafı: Render'da kalıcı dosya sistemi olmadığı için (bkz.
-// index.ts'teki AUTO_SEED açıklaması) ayrı bir dosya depolama servisi
+// db.ts'teki DB_PATH deseni) ayrı bir dosya depolama servisi
 // kurmak yerine, mobil tarafta küçültülüp (512x512) sıkıştırılmış JPEG'i
 // doğrudan base64 data URI olarak users.avatar_url'e yazıyoruz -- diğer
 // tüm kullanıcı verisiyle aynı kalıcılık garantisine sahip, ekstra servis/

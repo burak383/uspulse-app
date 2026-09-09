@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -15,29 +15,22 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
+import { GoogleSignin, isErrorWithCode, isSuccessResponse, statusCodes } from '@react-native-google-signin/google-signin';
 import { colors, fonts } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 
-// Required once per app for expo-auth-session to close the browser tab and
-// hand control back to the app after a Google redirect.
-WebBrowser.maybeCompleteAuthSession();
-
-const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
-const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || undefined;
+// Google ile giriş: expo-auth-session'ın tarayıcı tabanlı Google sağlayıcısı
+// (Google.useAuthRequest) Expo tarafından deprecated ilan edildi ve SDK 53+
+// ile birlikte fiilen kırıldı ("Error 400: invalid_request") -- Google,
+// "yüklenmiş uygulama" tipi istemciler için genel tarayıcı OAuth akışını
+// giderek daha sıkı reddediyor. Bunun yerine artık native
+// @react-native-google-signin/google-signin kullanılıyor (yapılandırması
+// AuthContext.tsx'te, uygulama açılışında bir kez yapılıyor). GOOGLE_CONFIGURED
+// sadece webClientId'ye bakıyor çünkü native SDK'da androidClientId/iosClientId
+// JS tarafında VERİLMİYOR -- onlar yerine Google Cloud Console'da paket
+// adı + SHA-1 (Android) / bundle ID (iOS) ile kayıtlı olmaları yeterli.
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || undefined;
-const GOOGLE_CONFIGURED = Boolean(GOOGLE_IOS_CLIENT_ID || GOOGLE_ANDROID_CLIENT_ID || GOOGLE_WEB_CLIENT_ID);
-
-// expo-auth-session'ın Google sağlayıcısı, geçerli platform için istemci
-// kimliği boşsa -- kullanıcı butona hiç basmadan -- senkron olarak hata
-// fırlatıp ekranı çökertiyor. Gerçek kimlikler opsiyonel olduğu için (asıl
-// "bu ayarlandı mı" kontrolü handleGooglePress içinde), her platforma
-// zararsız bir yer tutucu veriliyor ki hook hiçbir zaman `undefined`
-// görmesin -- yer tutucu için promptAsync() hiç çağrılmıyor çünkü
-// handleGooglePress GOOGLE_CONFIGURED kontrolünde durup buton basımını
-// orada kesiyor.
-const GOOGLE_PLACEHOLDER_CLIENT_ID = 'not-configured.apps.googleusercontent.com';
+const GOOGLE_CONFIGURED = Boolean(GOOGLE_WEB_CLIENT_ID);
 
 // New screen (not part of the original FireVibe export): the design only
 // shipped a pairing screen (Eşleş / ELe.tsx), with no way to actually create
@@ -53,11 +46,6 @@ export default function AuthScreen() {
     resetPassword,
     error,
     clearError,
-    biometricHardwareReady,
-    biometricLabel,
-    biometricEnabled,
-    enableBiometric,
-    loginWithBiometric,
   } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [name, setName] = useState('');
@@ -65,7 +53,6 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
-  const [biometricSubmitting, setBiometricSubmitting] = useState(false);
 
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotStep, setForgotStep] = useState<'request' | 'reset'>('request');
@@ -85,54 +72,6 @@ export default function AuthScreen() {
   const [reconnectSubmitting, setReconnectSubmitting] = useState(false);
   const [reconnectError, setReconnectError] = useState<string | null>(null);
 
-  // Google auth request is created unconditionally (the hook can't be
-  // called conditionally); an undefined clientId for a platform just means
-  // that platform's flow can't start, which we already guard against below.
-  const [, googleResponse, promptGoogleAsync] = Google.useAuthRequest({
-    iosClientId: GOOGLE_IOS_CLIENT_ID || GOOGLE_PLACEHOLDER_CLIENT_ID,
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID || GOOGLE_PLACEHOLDER_CLIENT_ID,
-    webClientId: GOOGLE_WEB_CLIENT_ID || GOOGLE_PLACEHOLDER_CLIENT_ID,
-  });
-
-  useEffect(() => {
-    if (googleResponse?.type === 'success') {
-      const idToken =
-        googleResponse.authentication?.idToken ?? (googleResponse.params as { id_token?: string })?.id_token;
-      if (!idToken) {
-        Alert.alert('Google ile giriş başarısız oldu.', 'Kimlik jetonu alınamadı.');
-        return;
-      }
-      setGoogleSubmitting(true);
-      loginWithGoogle(idToken)
-        .catch(() => {
-          // error is surfaced via context
-        })
-        .finally(() => setGoogleSubmitting(false));
-    } else if (googleResponse?.type === 'error') {
-      Alert.alert('Google ile giriş başarısız oldu.', googleResponse.error?.message);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [googleResponse]);
-
-  const offerBiometricEnrollment = () => {
-    if (!biometricHardwareReady || biometricEnabled) return;
-    Alert.alert(
-      `${biometricLabel} ile hızlı giriş`,
-      `Bir daha şifre girmeden ${biometricLabel} ile giriş yapmak ister misin?`,
-      [
-        { text: 'Şimdi değil', style: 'cancel' },
-        {
-          text: 'Etkinleştir',
-          onPress: () => {
-            enableBiometric().catch(() => {
-              Alert.alert(`${biometricLabel} etkinleştirilemedi.`);
-            });
-          },
-        },
-      ],
-    );
-  };
-
   const submit = async () => {
     clearError();
     setSubmitting(true);
@@ -142,7 +81,6 @@ export default function AuthScreen() {
       } else {
         await register(name.trim(), email.trim().toLowerCase(), password);
       }
-      offerBiometricEnrollment();
     } catch {
       // error is surfaced via context
     } finally {
@@ -154,32 +92,50 @@ export default function AuthScreen() {
     if (!GOOGLE_CONFIGURED) {
       Alert.alert(
         'Google girişi ayarlanmadı',
-        "Bu özelliği açmak için Google Cloud Console'dan OAuth istemci kimlikleri oluşturup mobile/.env dosyasına, aynı kimlikleri de server/.env içindeki GOOGLE_CLIENT_IDS değerine eklemeniz gerekir. Ayrıntılar için README'ye bakın.",
+        "Bu özelliği açmak için Google Cloud Console'dan bir Web OAuth istemci kimliği oluşturup mobile/.env dosyasındaki EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID değerine, aynı kimliği de server/.env (ya da Render) içindeki GOOGLE_CLIENT_IDS değerine eklemeniz gerekir. Ayrıntılar için README'ye bakın.",
       );
       return;
     }
+    setGoogleSubmitting(true);
     try {
-      await promptGoogleAsync();
-    } catch {
-      Alert.alert('Google ile giriş başlatılamadı.');
-    }
-  };
-
-  const handleBiometricPress = async () => {
-    setBiometricSubmitting(true);
-    try {
-      await loginWithBiometric();
-    } catch {
-      // error is surfaced via context
+      // Android'de Play Hizmetleri kurulu/güncel değilse burada anlamlı bir
+      // hata (ya da güncelleme diyaloğu) fırlatır -- iOS'ta bu kontrolün bir
+      // karşılığı yok, bu yüzden sadece Android'de çağrılıyor.
+      if (Platform.OS === 'android') {
+        await GoogleSignin.hasPlayServices();
+      }
+      const response = await GoogleSignin.signIn();
+      if (!isSuccessResponse(response) || !response.data.idToken) {
+        throw new Error('Google kimlik jetonu alınamadı.');
+      }
+      await loginWithGoogle(response.data.idToken);
+    } catch (e) {
+      if (isErrorWithCode(e)) {
+        // Kullanıcı sign-in ekranını kendisi kapattıysa (vazgeçtiyse) ya da
+        // bir önceki giriş denemesi hâlâ sürüyorsa sessizce geçiyoruz --
+        // bunlar gerçek bir hata değil.
+        if (e.code === statusCodes.SIGN_IN_CANCELLED || e.code === statusCodes.IN_PROGRESS) {
+          return;
+        }
+        if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+          Alert.alert(
+            'Google Play Hizmetleri gerekli',
+            'Google ile giriş yapabilmek için cihazında Google Play Hizmetleri kurulu ve güncel olmalı.',
+          );
+          return;
+        }
+      }
+      // Diğer tüm hatalar (loginWithGoogle'dan gelenler dahil) context'teki
+      // error state'i üzerinden zaten ekranda gösteriliyor; burada sadece
+      // GoogleSignin'in kendi ürettiği (context'e hiç ulaşmayan) hatalar için
+      // ek bir uyarı gösteriyoruz.
+      if (!(e instanceof Error) || e.message !== 'Google kimlik jetonu alınamadı.') {
+        return;
+      }
+      Alert.alert('Google ile giriş başarısız oldu.', 'Kimlik jetonu alınamadı.');
     } finally {
-      setBiometricSubmitting(false);
+      setGoogleSubmitting(false);
     }
-  };
-
-  const fillDemo = () => {
-    setMode('login');
-    setEmail('elif@uspulse.app');
-    setPassword('uspulse1234');
   };
 
   const openForgotPassword = () => {
@@ -377,35 +333,9 @@ export default function AuthScreen() {
               )}
             </Pressable>
 
-            {biometricHardwareReady && biometricEnabled && (
-              <Pressable
-                style={[styles.altButton, biometricSubmitting && styles.submitButtonDisabled]}
-                onPress={handleBiometricPress}
-                disabled={biometricSubmitting}
-              >
-                {biometricSubmitting ? (
-                  <ActivityIndicator color={colors.foreground} />
-                ) : (
-                  <>
-                    <MaterialCommunityIcons
-                      name={biometricLabel === 'Parmak izi' ? 'fingerprint' : 'face-recognition'}
-                      size={18}
-                      color={colors.foreground}
-                    />
-                    <Text style={styles.altButtonText}>{biometricLabel} ile giriş yap</Text>
-                  </>
-                )}
-              </Pressable>
-            )}
-
             <Pressable onPress={openReconnect} style={styles.demoButton}>
               <MaterialCommunityIcons name="cellphone-link" size={16} color={colors.primary} />
               <Text style={styles.demoText}>Bir bağlantı kodun mu var? Kodla bağlan</Text>
-            </Pressable>
-
-            <Pressable onPress={fillDemo} style={styles.demoButton}>
-              <MaterialCommunityIcons name="account-heart-outline" size={16} color={colors.primary} />
-              <Text style={styles.demoText}>Demo hesabıyla dene (Elif)</Text>
             </Pressable>
           </View>
         </ScrollView>

@@ -3,8 +3,8 @@ import path from 'node:path';
 import multer from 'multer';
 import { newId } from './util';
 
-// Render'ın ücretsiz planında dosya sistemi kalıcı değil (bkz. index.ts'teki
-// AUTO_SEED açıklaması ve db.ts'teki DB_PATH deseni) -- bu yüzden yüklenen
+// Render'ın ücretsiz planında dosya sistemi kalıcı değil (bkz. db.ts'teki
+// DB_PATH deseni) -- bu yüzden yüklenen
 // anı medyalarını (fotoğraf/video/ses) da SQLite dosyasıyla aynı mantıkla,
 // UPLOADS_DIR altında gerçek dosyalar olarak saklıyoruz. Kullanıcı Render'ın
 // ücretli planına (kalıcı disk) geçtiğinde bu klasörü o diske bağlaması

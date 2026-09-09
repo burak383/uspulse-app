@@ -2,6 +2,11 @@ import Database from 'better-sqlite3';
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Render'ın ücretsiz planında dosya sistemi kalıcı değil -- servis her
+// uyanışta/yeniden başlayışta bu SQLite dosyası (ve UPLOADS_DIR altındaki
+// anı medyaları) sıfırlanır. Kalıcı disk (Render'ın ücretli eklentisi)
+// eklenirse DB_PATH'i o diskteki bir yola ayarlamak yeterli -- kod tarafında
+// başka bir değişiklik gerekmez.
 const DB_PATH = process.env.DB_PATH || './data/uspulse.db';
 
 const dir = path.dirname(DB_PATH);
@@ -126,12 +131,11 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 -- Sürüş takibi: kullanıcı hızı bir eşiğin üstünde seyrederken ("sürüş
 -- halinde") anlık hızı ve izlediği yolu (rota noktaları) partnerine
--- GERÇEK ZAMANLI gösterir -- bkz. routes/driving.ts. Bilinçli olarak
--- GEÇMİŞ tutulmuyor: sürüş bittiğinde (ya da bir süre güncelleme
+-- GERÇEK ZAMANLI ve TEK TARAFLI gösterir (users.lat/lng'deki karşılıklı
+-- paylaşım şartı burada aranmaz) -- bkz. routes/driving.ts. Bilinçli
+-- olarak GEÇMİŞ tutulmuyor: sürüş bittiğinde (ya da bir süre güncelleme
 -- gelmediğinde) satır tamamen silinir, sadece o an aktif olan seyahat
--- var olur. Bu, uygulamanın geri kalanındaki "kesin konum asla partnere
--- gösterilmez" ilkesinin bilinçli, ayrı onay gerektiren tek istisnasıdır
--- (bkz. users.driving_share_enabled).
+-- var olur (bkz. users.driving_share_enabled).
 CREATE TABLE IF NOT EXISTS driving_trips (
   user_id TEXT PRIMARY KEY REFERENCES users(id),
   couple_id TEXT NOT NULL REFERENCES couples(id),
@@ -157,9 +161,10 @@ ensureColumn('users', 'google_id', 'google_id TEXT');
 ensureColumn('users', 'facebook_id', 'facebook_id TEXT');
 ensureColumn('users', 'reset_code_hash', 'reset_code_hash TEXT');
 ensureColumn('users', 'reset_code_expires', 'reset_code_expires TEXT');
-// Yaklaşık konum: sadece iki eşleşmiş kullanıcı arasındaki mesafeyi
-// hesaplamak için tutulur. Kesin enlem/boylam API üzerinden partnere ASLA
-// döndürülmez -- sadece hesaplanmış mesafe (km) paylaşılır, bkz. routes/me.ts.
+// Konum: karşılıklı paylaşım şartıyla tutulur -- ikisi de paylaştığında
+// hem hesaplanmış mesafe (km) hem de partnerin kesin enlem/boylamı diğerine
+// döner (haritada göstermek için); sadece biri paylaşırsa hiçbiri döner,
+// bkz. routes/me.ts.
 ensureColumn('users', 'lat', 'lat REAL');
 ensureColumn('users', 'lng', 'lng REAL');
 ensureColumn('users', 'location_updated_at', 'location_updated_at TEXT');

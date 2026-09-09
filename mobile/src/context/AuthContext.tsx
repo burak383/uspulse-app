@@ -17,6 +17,7 @@ import {
   stopDrivingLocationTracking,
 } from '../location/drivingLocationTask';
 import { configureRevenueCat, loginRevenueCatCouple, logoutRevenueCat } from '../subscriptions/purchases';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 const TOKEN_KEY = 'uspulse_token';
 // Biyometrik (Face ID/parmak izi) giriş özelliği kaldırıldı -- bu iki anahtar
@@ -127,6 +128,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // sessizce hiçbir şey yapmaz.
   useEffect(() => {
     configureRevenueCat();
+  }, []);
+
+  // Google ile giriş: Expo, expo-auth-session'ın tarayıcı tabanlı Google
+  // sağlayıcısını (Google.useAuthRequest) resmen "deprecated" ilan etti --
+  // Google, "yüklenmiş uygulama" tipi istemciler için genel tarayıcı OAuth
+  // akışını giderek daha sıkı reddediyor ve bu SDK 53+ ile birlikte fiilen
+  // kırıldı ("Error 400: invalid_request"). Bunun yerine artık native
+  // @react-native-google-signin/google-signin kullanılıyor -- bir kez,
+  // uygulama açılışında yapılandırılması yeterli (bkz. AuthScreen.tsx
+  // handleGooglePress). webClientId HER İKİ platform için de gerekli: ID
+  // token'ın "aud" alanı buna göre doğrulanıyor (bkz. server/src/routes/
+  // auth.ts GOOGLE_CLIENT_IDS) -- androidClientId burada AYRICA verilmiyor,
+  // onun yerine Google Cloud Console'da paket adı + SHA-1 ile kayıtlı olması
+  // yeterli (native SDK doğrulamayı orada yapıyor). Web client ID henüz
+  // ayarlanmadıysa (bkz. .env.example) sessizce hiçbir şey yapmaz -- buton
+  // yine de "ayarlanmadı" uyarısı gösterir (bkz. AuthScreen.tsx
+  // GOOGLE_CONFIGURED).
+  useEffect(() => {
+    const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || undefined;
+    const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || undefined;
+    if (webClientId) {
+      GoogleSignin.configure({ webClientId, iosClientId });
+    }
   }, []);
 
   useEffect(() => {
