@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -73,7 +74,15 @@ const PillIcon = ({
 );
 
 export default function MatchScreen() {
-  const { user, error, pair, logout, clearError } = useAuth();
+  const {
+    user,
+    error,
+    pair,
+    logout,
+    clearError,
+    getNotificationPermissionStatus,
+    enableNotifications,
+  } = useAuth();
   const [partnerCode, setPartnerCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -101,12 +110,53 @@ export default function MatchScreen() {
     }
   };
 
+  // Eşleştiğiniz anda partnerinin "Kalbini gönderdiğinde", bir anı, ruh hali
+  // ya da plan paylaştığında haberin olsun diye bildirim iznini isteriz --
+  // ama OS'in sistem izni penceresi hiçbir bağlam olmadan aniden çıkmasın
+  // diye önce KENDİ açıklayıcı istemimizi gösteriyoruz (pair() bu yüzden
+  // otomatik izin isteğini atlıyor, bkz. AuthContext.tsx). İzin daha önce
+  // kalıcı olarak reddedilmişse (OS artık tekrar sormaz) doğrudan Ayarlar'a
+  // yönlendiriyoruz; zaten açıksa hiçbir şey göstermiyoruz.
+  const promptEnableNotifications = async () => {
+    try {
+      const { granted, canAskAgain } = await getNotificationPermissionStatus();
+      if (granted) return;
+      if (!canAskAgain) {
+        Alert.alert(
+          'Bildirimler kapalı',
+          'Partnerinin paylaşımlarından haberdar olmak için Ayarlar\'dan UsPulse bildirimlerini açabilirsin.',
+          [
+            { text: 'Tamam', style: 'cancel' },
+            { text: 'Ayarları aç', onPress: () => Linking.openSettings() },
+          ],
+        );
+        return;
+      }
+      Alert.alert(
+        'Bildirimleri aç',
+        'Partnerin "Kalbini gönderdiğinde", bir anı, ruh hali ya da plan paylaştığında anında haberin olsun.',
+        [
+          { text: 'Şimdi değil', style: 'cancel' },
+          {
+            text: 'Bildirimleri aç',
+            onPress: () => {
+              enableNotifications().catch(() => {});
+            },
+          },
+        ],
+      );
+    } catch {
+      // sessizce geç -- bildirim istemi gösterilemezse eşleşme yine de geçerli.
+    }
+  };
+
   const submitPair = async () => {
     if (!partnerCode.trim()) return;
     clearError();
     setSubmitting(true);
     try {
       await pair(partnerCode.trim().toUpperCase());
+      promptEnableNotifications();
     } catch {
       // error surfaced via context
     } finally {

@@ -2,7 +2,6 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { AppState, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getSecureItemAsync, setSecureItemAsync, deleteSecureItemAsync } from '../storage/secureStorage';
-import * as LocalAuthentication from 'expo-local-authentication';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
 import * as Haptics from 'expo-haptics';
@@ -20,7 +19,9 @@ import {
 import { configureRevenueCat, loginRevenueCatCouple, logoutRevenueCat } from '../subscriptions/purchases';
 
 const TOKEN_KEY = 'uspulse_token';
-// expo-secure-store keys can only contain word characters, '.', '-'.
+// Biyometrik (Face ID/parmak izi) giriş özelliği kaldırıldı -- bu iki anahtar
+// artık SADECE eski sürümlerde etkinleştirmiş olabilecek kullanıcıların
+// cihazındaki kalıntı kayıtları temizlemek (logout/deleteAccount) için var.
 const BIOMETRIC_TOKEN_KEY = 'uspulse-biometric-token';
 const BIOMETRIC_FLAG_KEY = 'uspulse_biometric_enabled';
 const HAPTICS_FLAG_KEY = 'uspulse_haptics_enabled';
@@ -37,19 +38,6 @@ Notifications.setNotificationHandler({
     shouldSetBadge: false,
   }),
 });
-
-function labelForBiometricTypes(types: LocalAuthentication.AuthenticationType[]): string {
-  if (types.includes(LocalAuthentication.AuthenticationType.FACIAL_RECOGNITION)) {
-    return Platform.OS === 'ios' ? 'Face ID' : 'Yüz tanıma';
-  }
-  if (types.includes(LocalAuthentication.AuthenticationType.FINGERPRINT)) {
-    return 'Parmak izi';
-  }
-  if (types.includes(LocalAuthentication.AuthenticationType.IRIS)) {
-    return 'İris taraması';
-  }
-  return 'Biyometrik kimlik doğrulama';
-}
 
 interface AuthContextValue {
   status: Status;
@@ -76,15 +64,16 @@ interface AuthContextValue {
   endRelationship: () => Promise<void>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<void>;
-  refresh: () => Promise<void>;
+  refresh: (opts?: { skipPushRegistration?: boolean }) => Promise<void>;
   clearError: () => void;
-  // Biyometrik (Face ID / parmak izi) hızlı giriş.
-  biometricHardwareReady: boolean;
-  biometricLabel: string;
-  biometricEnabled: boolean;
-  enableBiometric: () => Promise<void>;
-  disableBiometric: () => Promise<void>;
-  loginWithBiometric: () => Promise<void>;
+  // Bildirim izni: partnerin "Kalbini gönderdiğinde", bir anı/ruh
+  // hali/plan paylaştığında gerçek zamanlı bildirim alabilmek için gerekli.
+  // Eşleşme dışındaki tüm refresh() çağrılarında (girişte, ön plana
+  // dönüşte) otomatik/sessizce denenir; eşleşme anında ise OS'in izin
+  // penceresi bağlamsız çıkmasın diye ELe.tsx önce kendi açıklayıcı
+  // istemini gösterip kullanıcı kabul ederse bunu kendisi çağırır.
+  getNotificationPermissionStatus: () => Promise<{ granted: boolean; canAskAgain: boolean }>;
+  enableNotifications: () => Promise<void>;
   // Konum paylaşımı: KARŞILIKLI -- ikiniz de açtığınızda aranızdaki mesafe
   // ve partnerin canlı enlem/boylamı (bkz. PartnerKonum ekranı) görünür;
   // sadece biriniz açarsa hiçbiri paylaşılmaz.
@@ -123,9 +112,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [partner, setPartner] = useState<PublicUser | null>(null);
   const [couple, setCouple] = useState<Couple | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [biometricHardwareReady, setBiometricHardwareReady] = useState(false);
-  const [biometricLabel, setBiometricLabel] = useState('Biyometrik kimlik doğrulama');
-  const [biometricEnabled, setBiometricEnabled] = useState(false);
   const [distanceKm, setDistanceKm] = useState<number | null>(null);
   const [locationSharedByMe, setLocationSharedByMe] = useState(false);
   const [locationSharedByPartner, setLocationSharedByPartner] = useState(false);
@@ -146,20 +132,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const [hasHardware, isEnrolled, types, enabledFlag, hapticsFlag] = await Promise.all([
-          LocalAuthentication.hasHardwareAsync(),
-          LocalAuthentication.isEnrolledAsync(),
-          LocalAuthentication.supportedAuthenticationTypesAsync(),
-          AsyncStorage.getItem(BIOMETRIC_FLAG_KEY),
-          AsyncStorage.getItem(HAPTICS_FLAG_KEY),
-        ]);
-        setBiometricHardwareReady(hasHardware && isEnrolled);
-        setBiometricLabel(labelForBiometricTypes(types));
-        setBiometricEnabled(enabledFlag === '1');
+        const hapticsFlag = await AsyncStorage.getItem(HAPTICS_FLAG_KEY);
         // varsayılan açık: kayıtlı bir tercih yoksa (ilk açılış) titreşim açık kalır.
         setHapticsEnabledState(hapticsFlag !== '0');
       } catch {
-        // biometrics simply won't be offered
+        // sessizce geç -- titreşim varsayılan (açık) kalır.
       }
     })();
   }, []);
@@ -311,8 +288,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // kaydeder ki partnerin "Kalbimi Gönder"i bu cihazı gerçekten titretebilsin.
   // Aynı shareLocationBestEffort gibi tamamen sessiz: izin yok, EAS projesine
   // henüz bağlanmamış (bkz. app.json) ya da Expo Go'da Android push
-  // desteklenmiyor (SDK 53+) gibi durumlarda görünmez şekilde vazgeçer.
-  const registerPushTokenBestEffort = useCallback(async () => {
+  // desteklenmiyor (SDK 53+) gibi durumlarda görünmez şekilde vazgeçer. Ayrıca
+  // ELe.tsx (eşleşme başarılı olduğunda "Bildirimleri aç" istemi) tarafından
+  // AÇIKÇA da çağrılabilsin diye dışa açık (bkz. AuthContextValue.enableNotifications).
+  const enableNotifications = useCallback(async () => {
     try {
       const current = await Notifications.getPermissionsAsync();
       let granted = current.granted;
@@ -332,17 +311,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  const refresh = useCallback(async () => {
+  // Salt-okunur: bildirim izninin şu an ne durumda olduğunu (yan etkisiz)
+  // döner -- ELe.tsx, OS'in sistem izni penceresini hiçbir bağlam olmadan
+  // göstermesin diye önce kendi açıklayıcı isteğini göstermeli mi yoksa izin
+  // kalıcı olarak reddedilmiş de kullanıcıyı doğrudan Ayarlar'a mı
+  // yönlendirmeli buna göre karar veriyor.
+  const getNotificationPermissionStatus = useCallback(async () => {
+    try {
+      const current = await Notifications.getPermissionsAsync();
+      return { granted: current.granted, canAskAgain: current.canAskAgain };
+    } catch {
+      return { granted: false, canAskAgain: false };
+    }
+  }, []);
+
+  const refresh = useCallback(async (opts?: { skipPushRegistration?: boolean }) => {
     try {
       const me = await api.get<MeResponse>('/me');
       applyMe(me);
       setStatus('signedIn');
       // Sadece eşleşmiş kullanıcılar için anlamlı (mesafe hesaplamak / dokunuş
       // bildirimi göndermek üzere) -- eşleşmemiş bir hesaba konum/bildirim
-      // izni sormanın bir faydası yok.
+      // izni sormanın bir faydası yok. skipPushRegistration: pair() bunu true
+      // geçer -- eşleşme anında OS'in bildirim izni penceresi hiçbir açıklama
+      // olmadan sessizce çıkmasın diye; onun yerine ELe.tsx önce kendi
+      // açıklayıcı istemini gösterip kullanıcı kabul ederse enableNotifications()'ı
+      // kendisi çağırır.
       if (me.user.coupleId) {
         shareLocationBestEffort();
-        registerPushTokenBestEffort();
+        if (!opts?.skipPushRegistration) {
+          enableNotifications();
+        }
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
@@ -359,13 +358,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       // 401 dışındaki hatalar (ağ hatası, sunucu 5xx vb.) burada YUTULMAZ --
-      // çağırana (login/loginWithBiometric/başlangıç mount efekti vb.)
+      // çağırana (login/başlangıç mount efekti vb.)
       // iletilir ki kullanıcı sessizce takılı kalmak yerine anlamlı bir hata
       // görsün. Fire-and-forget çağıran yerler (AppState dinleyicisi, 402
       // handler'ı) bunu kendi .catch(() => {})'leriyle yutuyor.
       throw e;
     }
-  }, [applyMe, shareLocationBestEffort, registerPushTokenBestEffort]);
+  }, [applyMe, shareLocationBestEffort, enableNotifications]);
 
   const shareLocationNow = useCallback(async () => {
     setError(null);
@@ -506,13 +505,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Kullanıcı bildirim iznini ilk seferde reddedip sonra Ayarlar'dan açarsa,
   // uygulamayı yeniden başlatmadan push jetonu hiç kaydolmuyordu -- bu yüzden
   // uygulama her ön plana döndüğünde de (yalnızca girişte/eşleşmede değil)
-  // tekrar deniyoruz. registerPushTokenBestEffort zaten tamamen sessiz/best-
+  // tekrar deniyoruz. enableNotifications zaten tamamen sessiz/best-
   // effort: izin hâlâ yoksa ya da EAS projesine bağlı değilse hiçbir şey yapmaz.
   useEffect(() => {
     if (status !== 'signedIn' || !user?.coupleId) return;
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active') {
-        registerPushTokenBestEffort();
+        enableNotifications();
         // Deneme/abonelik süresi uygulama arka plandayken/kapalıyken dolmuş
         // olabilir -- her ön plana dönüşte entitlement'ı da tazeliyoruz ki
         // RootNavigator gerekirse Paywall'a yönlendirsin. Aksi halde
@@ -525,7 +524,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
     return () => subscription.remove();
-  }, [status, user?.coupleId, registerPushTokenBestEffort, refresh]);
+  }, [status, user?.coupleId, enableNotifications, refresh]);
 
   // Herhangi bir API isteği sunucudan 402 (deneme/abonelik süresi doldu)
   // dönerse, hangi ekranda olunursa olsun entitlement'ı hemen yeniden çeker
@@ -638,7 +637,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setError(null);
       try {
         await api.post('/auth/pair', { code });
-        await refresh();
+        // skipPushRegistration: true -- eşleşme başarılı olduğunda OS'in
+        // bildirim izni penceresi hiçbir bağlam olmadan sessizce çıkmasın.
+        // Bunun yerine ELe.tsx, eşleşme tamamlandığında önce kendi
+        // açıklayıcı "Bildirimleri aç" istemini gösterip kullanıcı kabul
+        // ederse enableNotifications()'ı kendisi çağırıyor.
+        await refresh({ skipPushRegistration: true });
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Eşleşme başarısız oldu.');
         throw e;
@@ -690,9 +694,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLocationSharedByPartner(false);
     setEntitlement(null);
     setStatus('signedOut');
-    // Face ID / parmak izi kaydı bilerek silinmiyor: kullanıcı çıkış yapıp
-    // aynı cihazdan tekrar açtığında yine biyometrik olarak girebilsin diye.
-    // Tamamen kaldırmak isteyen disableBiometric() çağırabilir.
+    // Artık kullanılmayan biyometrik giriş özelliğinden kalma yerel izleri
+    // de temizle (eski bir sürümde etkinleştirmiş olabilecek kullanıcılar için).
+    await deleteSecureItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
+    await AsyncStorage.removeItem(BIOMETRIC_FLAG_KEY).catch(() => {});
   }, []);
 
   const deleteAccount = useCallback(async () => {
@@ -725,54 +730,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setLocationSharedByMe(false);
     setLocationSharedByPartner(false);
     setEntitlement(null);
-    setBiometricEnabled(false);
     setStatus('signedOut');
   }, []);
-
-  const enableBiometric = useCallback(async () => {
-    const token = await getSecureItemAsync(TOKEN_KEY);
-    if (!token) {
-      throw new Error('Biyometrik girişi etkinleştirmek için önce giriş yapmalısın.');
-    }
-    await setSecureItemAsync(BIOMETRIC_TOKEN_KEY, token);
-    await AsyncStorage.setItem(BIOMETRIC_FLAG_KEY, '1');
-    setBiometricEnabled(true);
-  }, []);
-
-  const disableBiometric = useCallback(async () => {
-    await deleteSecureItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
-    await AsyncStorage.removeItem(BIOMETRIC_FLAG_KEY);
-    setBiometricEnabled(false);
-  }, []);
-
-  const loginWithBiometric = useCallback(async () => {
-    setError(null);
-    try {
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      if (!hasHardware || !isEnrolled) {
-        throw new Error('Bu cihazda biyometrik kimlik doğrulama kurulu değil.');
-      }
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Kimliğini doğrula',
-        cancelLabel: 'Vazgeç',
-        disableDeviceFallback: false,
-      });
-      if (!result.success) {
-        throw new Error('Kimlik doğrulama tamamlanamadı.');
-      }
-      const token = await getSecureItemAsync(BIOMETRIC_TOKEN_KEY);
-      if (!token) {
-        throw new Error('Kayıtlı bir oturum bulunamadı. Lütfen şifreyle giriş yap.');
-      }
-      await setSecureItemAsync(TOKEN_KEY, token);
-      setAuthToken(token);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Giriş başarısız oldu.');
-      throw e;
-    }
-  }, [refresh]);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -795,12 +754,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       deleteAccount,
       refresh,
       clearError,
-      biometricHardwareReady,
-      biometricLabel,
-      biometricEnabled,
-      enableBiometric,
-      disableBiometric,
-      loginWithBiometric,
+      getNotificationPermissionStatus,
+      enableNotifications,
       distanceKm,
       locationSharedByMe,
       locationSharedByPartner,
@@ -834,12 +789,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       deleteAccount,
       refresh,
       clearError,
-      biometricHardwareReady,
-      biometricLabel,
-      biometricEnabled,
-      enableBiometric,
-      disableBiometric,
-      loginWithBiometric,
+      getNotificationPermissionStatus,
+      enableNotifications,
       distanceKm,
       locationSharedByMe,
       locationSharedByPartner,
