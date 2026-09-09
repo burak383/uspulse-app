@@ -23,6 +23,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 import { isRevenueCatConfigured } from '../src/subscriptions/purchases';
+import { isoDateToDisplay } from '../src/utils/date';
 import { api, API_URL } from '../src/api/client';
 import { Memory, MoodResponse, TouchesResponse } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
@@ -664,7 +665,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
             <StatCard
               icon="calendar-heart"
               iconColor={colors.primary}
-              value={couple?.reunion_date ?? '—'}
+              value={isoDateToDisplay(couple?.reunion_date, '—')}
               label="bir sonraki buluşma"
               status="YAKINDA"
               gradient
