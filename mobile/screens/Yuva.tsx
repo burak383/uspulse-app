@@ -20,6 +20,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api/client';
 import { MoodResponse, NotificationsResponse, TodayQuestion, TouchesResponse } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
+import { isoDateToDisplay } from '../src/utils/date';
 
 const { colors, fonts } = theme;
 
@@ -318,7 +319,7 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
                 <Icon name="arrow-top-right" size={22} color={colors.primary} />
               </View>
               <Text style={styles.reunionDate}>
-                {couple?.reunion_date ?? 'Henüz planlanmadı'}
+                {isoDateToDisplay(couple?.reunion_date, 'Henüz planlanmadı')}
                 {couple?.reunion_location ? ` · ${couple.reunion_location}` : ''}
               </Text>
               <Text style={styles.reunionHeading}>{partnerName}'i görmene</Text>

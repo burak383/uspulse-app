@@ -38,6 +38,9 @@ export interface MeResponse {
   distanceKm: number | null;
   locationSharedByMe: boolean;
   locationSharedByPartner: boolean;
+  /** Partnerin canlı enlem/boylamı -- yalnızca ikiniz de konum paylaştıysanız dolu gelir (bkz. PartnerKonum ekranı). */
+  partnerLat: number | null;
+  partnerLng: number | null;
   /** Sürüş takibini (anlık hız + rota) partnere açtın mı -- bkz. DrivingContext. */
   drivingShareEnabled: boolean;
   entitlement: Entitlement | null;

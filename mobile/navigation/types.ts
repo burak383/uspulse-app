@@ -8,6 +8,7 @@ export type RootStackParamList = {
   Biz: undefined;
   GununSorusu: undefined;
   Surus: undefined;
+  PartnerKonum: undefined;
 };
 
 export type TabRouteName = 'Yuva' | 'Planlar' | 'Anilar' | 'Biz';

@@ -32,9 +32,9 @@ interface Point {
   t: number;
 }
 
-// Sürüş takibini partnere açma onayı. Varsayılan kapalı -- bu, uygulamanın
-// geri kalanındaki "kesin konum asla partnere gösterilmez" ilkesinin
-// bilinçli tek istisnası olduğu için ayrı bir aç/kapa gerektiriyor (bkz.
+// Sürüş takibini partnere açma onayı. Varsayılan kapalı -- normal "Konum"
+// paylaşımından (routes/me.ts) farklı olarak TEK TARAFLI ve karşılıklı
+// paylaşım şartı olmadan çalıştığı için ayrı bir aç/kapa gerektiriyor (bkz.
 // mobile AuthContext.enableDrivingShare / Biz.tsx).
 router.put('/share', (req, res) => {
   db.prepare('UPDATE users SET driving_share_enabled = 1 WHERE id = ?').run(req.user!.id);

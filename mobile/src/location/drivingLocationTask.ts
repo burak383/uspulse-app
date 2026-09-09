@@ -1,10 +1,10 @@
 // Sürüş takibi: kullanıcı "Sürüş takibini paylaş" ayarını açtığında,
 // otomobille sürüş halindeyken (hız bir eşiğin üstünde kaldığı sürece)
-// partnerine GERÇEK ZAMANLI hızını ve izlediği yolu (rota) gösterir. Bu,
-// uygulamanın geri kalanındaki "kesin konum asla partnere gösterilmez,
-// sadece aradaki mesafe paylaşılır" ilkesinin bilinçli ve AYRI onay
-// gerektiren tek istisnasıdır -- bkz. AuthContext.enableDrivingShare ve
-// Biz.tsx'teki uyarı metni.
+// partnerine GERÇEK ZAMANLI ve TEK TARAFLI hızını ve izlediği yolu (rota)
+// gösterir -- normal "Konum" paylaşımından (backgroundLocationTask.ts)
+// farklı olarak partnerin karşılık olarak konum paylaşmasına gerek yoktur.
+// Bilinçli ve AYRI onay gerektiren bir özelliktir -- bkz.
+// AuthContext.enableDrivingShare ve Biz.tsx'teki uyarı metni.
 //
 // backgroundLocationTask.ts'ten (mesafe paylaşımı, 5dk/250m) BİLEREK ayrı
 // bir görev: sürüş takibi çok daha sık güncelleme (yaklaşık 15sn) ister,

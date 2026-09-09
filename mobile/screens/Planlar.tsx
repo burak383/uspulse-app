@@ -21,6 +21,7 @@ import { api } from '../src/api/client';
 import { PlanItem, SavingsGoal } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 import { confirmAsync } from '../src/utils/confirm';
+import { parseFlexibleDateToISO, isoDateToDisplay } from '../src/utils/date';
 
 const kasImage =
   'https://fwtngjyirchhhysukjxi.supabase.co/storage/v1/object/public/project-images/d8f99d97-2440-4f3a-addf-6eb2753287e6/cc97ef26-ea3b-42b7-89fc-3c5dbbec74d9.png';
@@ -350,18 +351,31 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
   const openReunionEdit = () => {
     setReunionTitle(couple?.reunion_title ?? '');
     setReunionLocation(couple?.reunion_location ?? '');
-    setReunionDate(couple?.reunion_date ?? '');
+    // Sunucu tarihi ISO (YYYY-AA-GG) tutuyor ama kullanıcıya her zaman
+    // GG.AA.YYYY olarak gösteriyoruz -- bkz. src/utils/date.ts.
+    setReunionDate(isoDateToDisplay(couple?.reunion_date));
     setReunionModalOpen(true);
   };
 
   const submitReunion = async () => {
     if (submitting) return;
+    // Kullanıcı GG.AA.YYYY (ya da -, / ile, hatta boşlukla "20 09 2026")
+    // yazabilir -- API'ye göndermeden önce ISO'ya çeviriyoruz. Tarih alanı
+    // boşsa buluşma tarihini temizlemiş sayılır (null gönderilir); doluysa
+    // ama ayrıştırılamıyorsa kaydetmeyi durdurup kullanıcıyı uyarıyoruz,
+    // yoksa sessizce geçersiz/yanlış bir tarih kaydedilebilirdi.
+    const trimmedDate = reunionDate.trim();
+    const isoDate = trimmedDate ? parseFlexibleDateToISO(trimmedDate) : null;
+    if (trimmedDate && !isoDate) {
+      Alert.alert('Geçersiz tarih', 'Tarihi gün.ay.yıl sırasıyla gir (örn. 20.09.2026).');
+      return;
+    }
     setSubmitting(true);
     try {
       await api.put('/reunion', {
         title: reunionTitle.trim() || null,
         location: reunionLocation.trim() || null,
-        date: reunionDate.trim() || null,
+        date: isoDate,
       });
       setReunionModalOpen(false);
       refresh();
@@ -413,7 +427,7 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
               </View>
 
               <Text style={styles.mutedText}>
-                {couple?.reunion_date ?? 'Tarih belirlenmedi'}
+                {isoDateToDisplay(couple?.reunion_date, 'Tarih belirlenmedi')}
                 {couple?.reunion_location ? ` · ${couple.reunion_location}` : ''}
               </Text>
               <Text style={styles.sectionTitle}>{couple?.reunion_title ?? 'Buluşma planı'}</Text>
@@ -817,7 +831,7 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
             <TextInput
               value={reunionDate}
               onChangeText={setReunionDate}
-              placeholder="Tarih (YYYY-AA-GG)"
+              placeholder="Tarih (GG.AA.YYYY, örn. 20.09.2026)"
               placeholderTextColor={colors.mutedForeground}
               style={styles.modalInput}
             />
