@@ -1,5 +1,5 @@
 name: Android Debug APK derle
- 
+
 # EAS'ın bulut build kotasına/hesap kurulumuna bağlı kalmadan, tamamen
 # ücretsiz bir GitHub Actions Linux runner'ında native Android projesini
 # üretip (expo prebuild -- bu proje "managed" workflow olduğu için android/
@@ -18,7 +18,7 @@ on:
     paths:
       - 'mobile/**'
       - '.github/workflows/build-android-debug.yml'
- 
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -37,33 +37,33 @@ jobs:
       # geçmişi) -- o yüzden Google ile giriş ve harita bu debug build'de de
       # release build'deki gibi çalışır.
       EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 50264949461-gf01td1a3d5sum2c3vvjujnglvkc2q98.apps.googleusercontent.com
- 
+
     steps:
       - name: Kodu çek
         uses: actions/checkout@v4
- 
+
       - name: Node.js kur
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: mobile/package-lock.json
- 
+
       - name: Bağımlılıkları kur
         working-directory: mobile
         run: npm ci
- 
+
       - name: JDK 17 kur
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
           cache: gradle
- 
+
       - name: Native Android projesini oluştur (expo prebuild)
         working-directory: mobile
         run: npx expo prebuild --platform android --no-install
- 
+
       - name: build.gradle'a debug'ı da JS paketini içine göm (Metro'suz çalışsın diye)
         # Varsayılan olarak "debug" build type'ı Metro'dan JS çekmeye çalışır --
         # bu yüzden Metro çalışmadan kurulan bir debug APK "Unable to load
@@ -85,14 +85,25 @@ jobs:
               f.write(content)
           print("build.gradle güncellendi: debug build artık JS paketini kendi içine gömecek.")
           PY
- 
+
+      - name: Gerekli Android NDK'yı kur
+        # React Native'in yeni mimarisi (newArchEnabled: true) belirli bir NDK
+        # sürümünü (ndk;27.1.12297006) gerektiriyor. Gradle bunu build sırasında
+        # kendisi kurmaya çalışıyor ama CI'da lisans onayı eksik olduğu için bu
+        # otomatik kurulum başarısız oluyor ("Failed to install the following
+        # SDK components") -- o yüzden burada elle, lisansları önceden kabul
+        # ederek kuruyoruz.
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;27.1.12297006"
+
       - name: gradlew'i çalıştırılabilir yap
         run: chmod +x mobile/android/gradlew
- 
+
       - name: Debug APK derle
         working-directory: mobile/android
         run: ./gradlew assembleDebug --no-daemon
- 
+
       - name: APK'yı Actions artifact olarak yükle
         uses: actions/upload-artifact@v4
         with:
