@@ -312,26 +312,12 @@ export default function AuthScreen() {
               )}
             </Pressable>
 
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>veya</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <Pressable
-              style={[styles.altButton, googleSubmitting && styles.submitButtonDisabled]}
-              onPress={handleGooglePress}
-              disabled={googleSubmitting}
-            >
-              {googleSubmitting ? (
-                <ActivityIndicator color={colors.foreground} />
-              ) : (
-                <>
-                  <MaterialCommunityIcons name="google" size={18} color={colors.foreground} />
-                  <Text style={styles.altButtonText}>Google ile giriş yap</Text>
-                </>
-              )}
-            </Pressable>
+            {/* Google ile giriş butonu geçici olarak gizlendi -- alttaki
+                handleGooglePress/GOOGLE_CONFIGURED ve AuthContext'teki
+                loginWithGoogle, native kütüphane, server ucu ve env
+                değişkenleri hepsi olduğu gibi duruyor, tekrar açmak için
+                buraya sadece butonu (ve üstündeki "veya" ayraç satırını)
+                geri eklemek yeterli. */}
 
             <Pressable onPress={openReconnect} style={styles.demoButton}>
               <MaterialCommunityIcons name="cellphone-link" size={16} color={colors.primary} />
