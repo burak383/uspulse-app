@@ -24,11 +24,18 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # mobile/.env'deki (git'e gitmeyen) gerçek değerlerle aynı -- bu
-      # değerler gizli değil (API adresi herkese açık, Google Android
-      # client ID uygulamanın içine zaten gömülen genel bir kimlik), o
-      # yüzden burada düz yazmak güvenli.
+      # değerler gizli değil (API adresi herkese açık, Google client ID'leri
+      # uygulamanın içine zaten gömülen genel kimlikler), o yüzden burada düz
+      # yazmak güvenli.
       EXPO_PUBLIC_API_URL: https://uspulse-backend.onrender.com/api
-      EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: 50264949461-gf01td1a3d5sum2c3vvjujnglvkc2q98.apps.googleusercontent.com
+      # Google ile giriş artık native @react-native-google-signin/google-signin
+      # kullanıyor (bkz. mobile/.env.example) -- Web client ID'yi Google Cloud
+      # Console'da oluşturduktan sonra burayı doldur, aşağıdaki gibi:
+      # EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID: <WEB_CLIENT_ID>.apps.googleusercontent.com
+      # Bu APK debug keystore ile imzalandığından, Google Cloud Console'daki
+      # Android istemcisine debug keystore'un SHA-1'ini de eklemen gerekir:
+      #   keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android
+ 
     steps:
       - name: Kodu çek
         uses: actions/checkout@v4
@@ -54,6 +61,28 @@ jobs:
       - name: Native Android projesini oluştur (expo prebuild)
         working-directory: mobile
         run: npx expo prebuild --platform android --no-install
+ 
+      - name: build.gradle'a debug'ı da JS paketini içine göm (Metro'suz çalışsın diye)
+        # Varsayılan olarak "debug" build type'ı Metro'dan JS çekmeye çalışır --
+        # bu yüzden Metro çalışmadan kurulan bir debug APK "Unable to load
+        # script" hatası verir. react{} bloğuna debuggableVariants = [] ekleyerek
+        # debug build'in de release gibi kendi JS paketini APK'nın içine
+        # gömmesini sağlıyoruz -- android/ klasörü her prebuild'de sıfırdan
+        # üretildiği için bu düzenlemeyi kalıcı olarak repoya değil, HER
+        # ÇALIŞTIRMADA burada yapıyoruz.
+        working-directory: mobile/android/app
+        run: |
+          python3 - <<'PY'
+          path = "build.gradle"
+          with open(path) as f:
+              content = f.read()
+          marker = '    bundleCommand = "export:embed"\n'
+          assert marker in content, "bundleCommand satırı beklenen şekilde bulunamadı -- expo prebuild çıktısı değişmiş olabilir."
+          content = content.replace(marker, marker + "    debuggableVariants = []\n")
+          with open(path, "w") as f:
+              f.write(content)
+          print("build.gradle güncellendi: debug build artık JS paketini kendi içine gömecek.")
+          PY
  
       - name: gradlew'i çalıştırılabilir yap
         run: chmod +x mobile/android/gradlew
