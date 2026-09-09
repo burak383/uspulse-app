@@ -4,7 +4,7 @@
 // rıza şartı), bu ekran salt görüntüleme amaçlı; açma/kapama anahtarı
 // Biz.tsx'teki "Gizliliğiniz sizin elinizde" kartında.
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -99,6 +99,10 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
         </View>
       ) : shared && me ? (
         <View style={styles.mapWrap}>
+          {/* GEÇİCİ TEŞHİS -- beyaz ekran hatasını bulmak için, kalıcı değil. */}
+          <Text style={styles.debugCoords} pointerEvents="none">
+            lat={String(me.partnerLat)} lng={String(me.partnerLng)}
+          </Text>
           <MapView
             ref={mapRef}
             style={StyleSheet.absoluteFillObject}
@@ -109,6 +113,7 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
               latitudeDelta: 0.02,
               longitudeDelta: 0.02,
             }}
+            onMapReady={() => Alert.alert('Harita hazır', `onMapReady tetiklendi. lat=${me.partnerLat} lng=${me.partnerLng}`)}
           >
             <Marker coordinate={{ latitude: me.partnerLat as number, longitude: me.partnerLng as number }} title={partnerName}>
               <View style={styles.markerDot}>
@@ -169,6 +174,16 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   mapWrap: { flex: 1 },
+  debugCoords: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    zIndex: 10,
+    backgroundColor: 'rgba(255,0,0,0.7)',
+    color: '#fff',
+    fontSize: 11,
+    padding: 4,
+  },
   markerDot: {
     width: 30,
     height: 30,
