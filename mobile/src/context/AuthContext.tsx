@@ -68,6 +68,12 @@ interface AuthContextValue {
   forgotPassword: (email: string) => Promise<ForgotPasswordResponse>;
   resetPassword: (email: string, code: string, newPassword: string) => Promise<void>;
   pair: (code: string) => Promise<void>;
+  // İlişkiyi sonlandırma: hesabı SİLMEDEN sadece eşleşmeyi kaldırır -- her
+  // iki tarafın da couple_id'si temizlenir, ikisi de dilediğinde yeni
+  // biriyle yeniden eşleşebilir. bkz. server/src/routes/me.ts POST
+  // /me/couple/end. Başarılı olunca partner/couple null'a düşer ve
+  // RootNavigator otomatik olarak Match (Eşleş) ekranına yönlendirir.
+  endRelationship: () => Promise<void>;
   logout: () => Promise<void>;
   deleteAccount: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -79,8 +85,9 @@ interface AuthContextValue {
   enableBiometric: () => Promise<void>;
   disableBiometric: () => Promise<void>;
   loginWithBiometric: () => Promise<void>;
-  // Partnere aranızdaki YAKLAŞIK mesafeyi göstermek için konum paylaşımı.
-  // Kesin enlem/boylam hiçbir zaman partnere ya da istemci koduna dönmez.
+  // Konum paylaşımı: KARŞILIKLI -- ikiniz de açtığınızda aranızdaki mesafe
+  // ve partnerin canlı enlem/boylamı (bkz. PartnerKonum ekranı) görünür;
+  // sadece biriniz açarsa hiçbiri paylaşılmaz.
   distanceKm: number | null;
   locationSharedByMe: boolean;
   locationSharedByPartner: boolean;
@@ -92,8 +99,9 @@ interface AuthContextValue {
   backgroundLocationEnabled: boolean;
   // Sürüş takibi: AÇIK olduğunda, otomobille sürüş halindeyken (hız bir
   // eşiğin üstünde kaldığı sürece) anlık hızın ve izlediğin yol partnerine
-  // GERÇEK ZAMANLI gösterilir -- "kesin konum asla partnere gösterilmez"
-  // ilkesinin bilinçli, ayrı onay gerektiren tek istisnası. Varsayılan kapalı.
+  // GERÇEK ZAMANLI ve TEK TARAFLI gösterilir (normal "Konum" ayarından
+  // farklı olarak partnerin de aynı ayarı açmasına gerek yok) -- bilinçli,
+  // ayrı onay gerektiren bir özellik. Varsayılan kapalı.
   drivingShareEnabled: boolean;
   drivingSubmitting: boolean;
   enableDrivingShare: () => Promise<void>;
@@ -639,6 +647,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [refresh],
   );
 
+  const endRelationship = useCallback(async () => {
+    setError(null);
+    try {
+      await api.post('/me/couple/end');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'İlişki sonlandırılamadı.');
+      throw e;
+    }
+    // Artık paylaşacak bir partner kalmadı -- cihazdaki konum/sürüş takibini
+    // de durduruyoruz (sunucu tarafı zaten couple_id'yi temizledi). refresh()
+    // partner/couple'ı null döndürünce RootNavigator otomatik olarak Match
+    // (Eşleş) ekranına geçer.
+    await stopBackgroundLocationTracking().catch(() => {});
+    setBackgroundLocationEnabled(false);
+    await stopDrivingLocationTracking().catch(() => {});
+    setDrivingShareEnabled(false);
+    await refresh();
+  }, [refresh]);
+
   const logout = useCallback(async () => {
     // Bu cihaz artık bildirim almamalı -- jetonu silmeyi dene (auth başlığı
     // hâlâ geçerliyken, token'ı temizlemeden önce). Başarısız olursa önemli
@@ -763,6 +790,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       forgotPassword,
       resetPassword,
       pair,
+      endRelationship,
       logout,
       deleteAccount,
       refresh,
@@ -801,6 +829,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       forgotPassword,
       resetPassword,
       pair,
+      endRelationship,
       logout,
       deleteAccount,
       refresh,

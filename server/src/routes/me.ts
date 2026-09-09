@@ -42,14 +42,15 @@ router.get('/', requireAuth, (req, res) => {
       .get(me.coupleId, me.id);
   }
 
-  // Gizlilik: partnere ASLA kendi enlem/boylamını ya da benim enlem/
-  // boylamımı döndürmüyoruz -- sadece ikisi de konum paylaştıysa hesaplanan
-  // mesafeyi (km) paylaşıyoruz. Hiçbiri paylaşmadıysa/tek biri paylaştıysa
-  // distanceKm null döner ve mobil taraf bunu "henüz paylaşılmadı" olarak gösterir.
+  // Konum paylaşımı KARŞILIKLI: ikisi de açtığında hem mesafe hem de
+  // partnerin canlı enlem/boylamı (haritada göstermek için) döner. Sadece
+  // biri paylaşıyorsa (ya da hiçbiri paylaşmıyorsa) ne mesafe ne de ham
+  // konum döner -- mobil taraf bunu "henüz paylaşılmadı" olarak gösterir.
   let distance: number | null = null;
   const iShared = row.lat != null && row.lng != null;
   const partnerShared = Boolean(partner && partner.lat != null && partner.lng != null);
-  if (iShared && partnerShared) {
+  const mutualShare = iShared && partnerShared;
+  if (mutualShare) {
     distance = Math.round(distanceKm(row.lat, row.lng, partner.lat, partner.lng));
   }
 
@@ -64,6 +65,8 @@ router.get('/', requireAuth, (req, res) => {
     distanceKm: distance,
     locationSharedByMe: iShared,
     locationSharedByPartner: partnerShared,
+    partnerLat: mutualShare ? partner.lat : null,
+    partnerLng: mutualShare ? partner.lng : null,
     // Sürüş takibi paylaşımı (bkz. routes/driving.ts) diğer cihazlarla
     // senkron kalması için sunucu tarafında (AsyncStorage değil) tutulur.
     drivingShareEnabled: Boolean(row.driving_share_enabled),
@@ -217,6 +220,29 @@ const deleteMyData = db.transaction((userId: string) => {
       db.prepare('UPDATE users SET couple_id = NULL WHERE id = ?').run(remaining[0].id);
     }
   }
+});
+
+// İlişkiyi sonlandırma: hesabı silmeden, sadece eşleşmeyi kaldırır --
+// hesabı silme akışındaki (yukarıdaki deleteMyData) "kalan partneri
+// çiftten çıkar" mantığıyla aynı: her iki tarafı da couple_id = NULL
+// yapıyoruz, ikisi de dilediğinde yeni biriyle yeniden eşleşebilsin diye
+// (routes/auth.ts POST /pair, zaten dolu couple_id'li kullanıcıların
+// eşleşmesini reddediyor). Paylaşılan içerikler (anılar, planlar,
+// birikimler vb.) SİLİNMEZ -- yalnızca kimsenin artık erişemeyeceği bir
+// kayda dönüşür, tıpkı hesap silme akışındaki gibi.
+router.post('/couple/end', requireAuth, (req, res) => {
+  const me = req.user!;
+  if (!me.coupleId) {
+    return res.status(400).json({ error: 'Şu an bir ilişkin yok.' });
+  }
+  const members = db.prepare('SELECT id FROM users WHERE couple_id = ?').all(me.coupleId) as { id: string }[];
+  const endCouple = db.transaction(() => {
+    for (const m of members) {
+      db.prepare('UPDATE users SET couple_id = NULL WHERE id = ?').run(m.id);
+    }
+  });
+  endCouple();
+  res.status(204).end();
 });
 
 router.delete('/', requireAuth, (req, res) => {

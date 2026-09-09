@@ -223,6 +223,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     couple,
     logout,
     deleteAccount,
+    endRelationship,
     entitlement,
     distanceKm,
     locationSharedByMe,
@@ -242,6 +243,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
   const [touches, setTouches] = useState<TouchesResponse | null>(null);
   const [lockedMemories, setLockedMemories] = useState(0);
   const [deleting, setDeleting] = useState(false);
+  const [endingRelationship, setEndingRelationship] = useState(false);
   const [hapticsSubmitting, setHapticsSubmitting] = useState(false);
   const [mood, setMood] = useState<MoodResponse | null>(null);
   const [moodSubmitting, setMoodSubmitting] = useState(false);
@@ -340,7 +342,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     if (locationSharedByMe) {
       const confirmed = await confirmAsync(
         'Konum paylaşımını kapat',
-        'Kapatırsan aranızdaki mesafe artık gösterilmez ve arka plan konum takibi durur. Partnerinin konumu bu uygulamada zaten hiçbir zaman görünmüyor, sadece hesaplanan mesafe gösteriliyordu.',
+        'Kapatırsan partnerin artık haritada anlık konumunu göremez, aranızdaki mesafe de gösterilmez ve arka plan konum takibi durur.',
         'Kapat',
       );
       if (!confirmed) return;
@@ -353,9 +355,12 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     // hemen ardından "Her Zaman İzin Ver") tetiklenmeden ÖNCE ne için
     // istendiğini açıklıyoruz -- bağlamsız art arda konum izni istekleri
     // App Store/Play Store incelemesinde sık karşılaşılan bir ret nedeni.
+    // Bu, kesin konumu paylaşan bir özellik olduğu için onay metni bunu
+    // AÇIKÇA belirtiyor (bkz. server/src/routes/me.ts -- karşılıklı paylaşım
+    // şartı: partnerin de açması gerekir, yoksa hiçbir taraf diğerini göremez).
     const confirmed = await confirmAsync(
       'Konum paylaşımını aç',
-      'Aranızdaki yaklaşık mesafeyi göstermek için önce konum iznini, ardından uygulama kapalıyken de mesafeyi güncel tutabilmek için "Her Zaman İzin Ver" iznini isteyeceğiz. Kesin konumun partnerine hiçbir zaman gösterilmez, sadece hesaplanan mesafe paylaşılır.',
+      'Açarsan, ikiniz de paylaşımı açtığında partnerin anlık konumunu haritada canlı görebilecek, sen de onunkini görebileceksin. Bunun için önce konum iznini, ardından uygulama kapalıyken de güncel kalması için "Her Zaman İzin Ver" iznini isteyeceğiz.',
       'Devam et',
     );
     if (!confirmed) return;
@@ -364,8 +369,9 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     });
   };
 
-  // "Konum (yaklaşık mesafe için)" ayarının aksine bu, kesin konumu (anlık
-  // hız + izlenen rota) partnerine CANLI gösteren bilinçli tek istisna --
+  // "Konum" ayarından farkı: bu, elle açıp kapatılan sürekli bir paylaşım
+  // değil, sadece araçla sürüş halindeyken (hız eşiği aşıldığında) otomatik
+  // tetiklenen, sürüş bitince verisi hemen silinen GEÇİCİ bir paylaşım --
   // bu yüzden hem açarken hem kapatırken ayrı, net bir onay metni var.
   const toggleDrivingShare = async () => {
     if (drivingShareEnabled) {
@@ -382,13 +388,29 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     }
     const confirmed = await confirmAsync(
       'Sürüş takibini aç',
-      'Açarsan, otomobille sürüş halindeyken (hız belirli bir eşiğin üzerine çıktığında) anlık hızın ve izlediğin yol partnerine CANLI olarak gösterilir. Bu, uygulamanın geri kalanındaki "kesin konum asla gösterilmez" ilkesinin tek istisnasıdır -- sürüş bitince veri hemen silinir, geçmiş tutulmaz. Bunun için "Her Zaman İzin Ver" konum izni gerekecek.',
+      'Açarsan, otomobille sürüş halindeyken (hız belirli bir eşiğin üzerine çıktığında) anlık hızın ve izlediğin yol partnerine CANLI olarak gösterilir -- sürüş bitince veri hemen silinir, geçmiş tutulmaz. Bunun için "Her Zaman İzin Ver" konum izni gerekecek.',
       'Devam et',
     );
     if (!confirmed) return;
     enableDrivingShare().catch((e) => {
       Alert.alert('Sürüş takibi açılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
     });
+  };
+
+  const confirmEndRelationship = async () => {
+    const confirmed = await confirmAsync(
+      'İlişkiyi sonlandır',
+      'Hesap ilişkileri sonlandırılacak. Emin misiniz?',
+      'Evet',
+      'Vazgeç',
+    );
+    if (!confirmed) return;
+    setEndingRelationship(true);
+    endRelationship()
+      .catch(() => {
+        Alert.alert('İlişki sonlandırılamadı', 'Lütfen tekrar dene.');
+      })
+      .finally(() => setEndingRelationship(false));
   };
 
   const confirmDeleteAccount = async () => {
@@ -688,6 +710,21 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
           </View>
         </View>
 
+        <Pressable
+          style={[styles.logoutCard, endingRelationship && styles.deleteCardDisabled]}
+          onPress={confirmEndRelationship}
+          disabled={endingRelationship}
+        >
+          {endingRelationship ? (
+            <ActivityIndicator color={colors.destructive} />
+          ) : (
+            <>
+              <RoundIcon name="link-off" color={colors.destructive} backgroundColor={colors.destructive} size={19} />
+              <Text style={styles.logoutText}>İlişkiyi sonlandır</Text>
+            </>
+          )}
+        </Pressable>
+
         <View style={styles.card}>
           <View style={styles.contentRow}>
             <RoundIcon name="shield-check-outline" color={colors.success} backgroundColor={colors.success} size={21} />
@@ -698,10 +735,11 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
           </View>
 
           <View style={styles.notice}>
-            <Icon name="map-marker-off-outline" size={17} color={colors.success} />
+            <Icon name="map-marker-radius-outline" size={17} color={colors.success} />
             <Text style={styles.caption}>
-              <Text style={styles.successBold}>Kesin konumunuz asla gösterilmez. </Text>
-              Yalnızca aranızdaki yaklaşık mesafe paylaşılır.
+              <Text style={styles.successBold}>Konumunuz sadece karşılıklı paylaşılır. </Text>
+              İkiniz de açtığınızda birbirinizin anlık konumunu haritada görebilirsiniz; sadece biriniz
+              açarsa diğeriniz hiçbir şey göremez.
             </Text>
           </View>
 
@@ -748,12 +786,18 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
           <View style={styles.privacyList}>
             <PrivacyRow
               icon="map-marker-radius-outline"
-              label="Konum (yaklaşık mesafe için)"
+              label="Konum (canlı harita)"
               color={colors.primary}
               value={locationSharedByMe ? 'Paylaşılıyor' : 'Kapalı'}
               active={locationSharedByMe}
               loading={locationSubmitting}
               onPress={toggleLocationSharing}
+            />
+            <LinkRow
+              icon="map-marker-account"
+              label="Partnerinin konumunu gör"
+              color={colors.primary}
+              onPress={() => navigation.navigate('PartnerKonum')}
             />
             <PrivacyRow
               icon="car-speed-limiter"
