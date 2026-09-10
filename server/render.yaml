@@ -28,11 +28,25 @@ services:
     # Asıl kalıcı çözüm package.json'daki "postinstall": "npm rebuild
     # better-sqlite3" -- bu, cache'ten ne gelirse gelsin her deploy'da
     # native modülü OANKİ Node sürümüne göre yeniden derliyor.
-    plan: free
+    # Kalıcı disk (aşağıdaki "disks" bloğu) sadece ücretli planlarda
+    # kullanılabiliyor -- bu yüzden "starter" (en ucuz ücretli plan, aylık
+    # sabit bir ücret) seçili. "free" planda disk eklenemez.
+    plan: starter
     rootDir: server
     buildCommand: npm install && npm run build
     startCommand: npm start
     healthCheckPath: /api/health
+    # Kalıcı disk: SQLite DB'si ve yüklenen anı medyaları artık her
+    # restart/deploy'da silinmek yerine burada kalıcı olarak saklanır --
+    # ör. Play Store/App Store incelemesi için oluşturulan bir reviewer
+    # hesabı da dahil. Dashboard'da "New > Blueprint" ile senkronize
+    # etmiyorsan (zaten manuel oluşturulmuş bir servisin varsa), bu bloğu
+    # Dashboard > Disks sekmesinden elle eklemen gerekir: mount path olarak
+    # aşağıdaki /var/data'yı kullan.
+    disks:
+      - name: uspulse-data
+        mountPath: /var/data
+        sizeGB: 1
     envVars:
       # Render'ın kendisi otomatik ayarlar; burada sadece belgeleme amaçlı.
       - key: NODE_ENV
@@ -60,15 +74,10 @@ services:
         sync: false
       - key: LEGAL_CONTACT_EMAIL
         sync: false
-      # Ücretsiz plan (kalıcı disk yok) için varsayılan: her yeniden
-      # başlayışta demo verisi otomatik oluşturulur. Kalıcı diske
-      # geçtiğinde false yapman önerilir (bkz. .env.example).
-      - key: AUTO_SEED
-        value: true
-      # Ücretsiz planda dosya sistemi kalıcı değil; kalıcı diske geçersen
-      # DB_PATH ve UPLOADS_DIR'i o diskin bağlandığı yola göre ayarla ve
-      # aşağıdaki "disk" bloğunu bu servise ekle (Dashboard > Disks).
+      # Yukarıdaki kalıcı diskin bağlandığı /var/data yolunun altında --
+      # böylece DB dosyası ve yüklenen medyalar artık restart/deploy'larda
+      # silinmiyor.
       - key: DB_PATH
-        value: ./data/uspulse.db
+        value: /var/data/uspulse.db
       - key: UPLOADS_DIR
-        value: ./data/uploads
+        value: /var/data/uploads
