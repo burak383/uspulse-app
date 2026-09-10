@@ -6,7 +6,7 @@
     "scheme": "uspulse",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "icon": "./assets/icon.png",
     "splash": {
       "backgroundColor": "#34243A",
