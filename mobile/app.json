@@ -58,7 +58,7 @@
     "extra": {
       "apiUrl": "https://uspulse-backend.onrender.com/api",
       "revenueCat": {
-        "iosApiKey": "",
+        "iosApiKey": "appl_ujUhKQQqjfTWVHcVXxgWMrAScJq",
         "androidApiKey": "goog_ZbaVsRrXTTQVVvFboGDfnYVktfE"
       },
       "eas": {
