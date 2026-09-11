@@ -24,7 +24,7 @@
         "NSMicrophoneUsageDescription": "Anılar'a ses notu ekleyebilmek için mikrofonuna erişim izni gerekir."
       },
       "config": {
-        "googleMapsApiKey": "BURAYA_GOOGLE_MAPS_IOS_API_KEYINI_EKLE"
+        "googleMapsApiKey": "AIzaSyCmTIemLmnT5ZYxWppLSRsmQc3CXYk1eXY"
       }
     },
     "android": {
