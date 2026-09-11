@@ -24,9 +24,14 @@ export class ErrorBoundary extends React.Component<Props, State> {
     return { hasError: true };
   }
 
-  componentDidCatch(error: unknown) {
+  componentDidCatch(error: unknown, info: { componentStack?: string | null }) {
+    // component stack de loglanıyor ki bir dahaki sefere hangi bileşenden
+    // geldiğini bulmak için cihaz logunu (adb logcat / Xcode konsolu) tekrar
+    // taramak yeterli olsun -- bkz. GNNSorusu.tsx Avatar bileşenindeki "Text
+    // strings must be rendered within a <Text> component." hatası, bu
+    // sayede logcat'ten teşhis edildi.
     // eslint-disable-next-line no-console
-    console.error('Yakalanmamış render hatası:', error);
+    console.error('Yakalanmamış render hatası:', error, info?.componentStack);
   }
 
   handleRetry = () => {

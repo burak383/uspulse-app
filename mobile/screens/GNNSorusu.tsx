@@ -55,7 +55,16 @@ const CircleButton = ({
 );
 
 const Avatar = ({ children, muted = false }: { children: React.ReactNode; muted?: boolean }) => (
-  <View style={[styles.avatar, muted ? styles.mutedAvatar : styles.primaryAvatar]}>{children}</View>
+  <View style={[styles.avatar, muted ? styles.mutedAvatar : styles.primaryAvatar]}>
+    {/* Bu bileşen hem düz bir metinle (kullanıcı adının baş harfi, aşağıda
+    "Senin cevabın" kartında) hem de bir <Icon> elemanıyla (partnerin
+    avatarında) çağrılıyor -- düz string doğrudan <View> içine konursa RN
+    "Text strings must be rendered within a <Text> component." hatasıyla
+    çöküyordu (bkz. Android logcat: Avatar > DailyRitualScreen). String
+    olan durumu burada <Text>'e sarıyoruz, Icon gibi zaten bir eleman olan
+    children'a dokunmuyoruz. */}
+    {typeof children === 'string' ? <Text style={styles.avatarText}>{children}</Text> : children}
+  </View>
 );
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'GununSorusu'>;
@@ -486,6 +495,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.muted,
+  },
+  avatarText: {
+    color: colors.primaryForeground,
+    fontFamily: fonts.body,
+    fontSize: 16,
+    fontWeight: '800',
   },
   cardTitle: {
     color: colors.cardForeground,
