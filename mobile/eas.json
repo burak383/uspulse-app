@@ -18,6 +18,7 @@
       }
     },
     "production": {
+      "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_API_URL": "https://uspulse-backend.onrender.com/api",
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "50264949461-gf01td1a3d5sum2c3vvjujnglvkc2q98.apps.googleusercontent.com"
