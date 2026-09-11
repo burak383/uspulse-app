@@ -21,7 +21,8 @@
       "bundleIdentifier": "app.uspulse.mobile",
       "icon": "./assets/icon.png",
       "infoPlist": {
-        "NSMicrophoneUsageDescription": "Anılar'a ses notu ekleyebilmek için mikrofonuna erişim izni gerekir."
+        "NSMicrophoneUsageDescription": "Anılar'a ses notu ekleyebilmek için mikrofonuna erişim izni gerekir.",
+        "ITSAppUsesNonExemptEncryption": false
       },
       "config": {
         "googleMapsApiKey": "AIzaSyCmTIemLmnT5ZYxWppLSRsmQc3CXYk1eXY"
