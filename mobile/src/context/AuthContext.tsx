@@ -49,6 +49,10 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
   loginWithGoogle: (idToken: string) => Promise<void>;
+  // Sign in with Apple: fullName sadece İLK yetkilendirmede dolu gelir
+  // (Apple'ın kendi kısıtı) -- bkz. AuthScreen.tsx handleApplePress ve
+  // server/src/routes/auth.ts POST /auth/apple.
+  loginWithApple: (identityToken: string, fullName?: string) => Promise<void>;
   // Başka bir cihazda zaten kayıtlı olduğun hesabına, e-posta/şifre girmeden
   // -- yalnızca o cihazdan (Biz.tsx "Davetini paylaş" kartından) kendine
   // gönderdiğin davet kodunu girerek -- yeniden bağlanmak için. bkz. server/
@@ -616,6 +620,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     [handleAuthResponse, refresh],
   );
 
+  const loginWithApple = useCallback(
+    async (identityToken: string, fullName?: string) => {
+      setError(null);
+      try {
+        const res = await api.post<AuthResponse>('/auth/apple', { identityToken, fullName });
+        await handleAuthResponse(res);
+        await refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Apple ile giriş başarısız oldu.');
+        throw e;
+      }
+    },
+    [handleAuthResponse, refresh],
+  );
+
   const reconnectWithCode = useCallback(
     async (code: string) => {
       setError(null);
@@ -769,6 +788,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       register,
       loginWithGoogle,
+      loginWithApple,
       reconnectWithCode,
       forgotPassword,
       resetPassword,
@@ -804,6 +824,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       register,
       loginWithGoogle,
+      loginWithApple,
       reconnectWithCode,
       forgotPassword,
       resetPassword,

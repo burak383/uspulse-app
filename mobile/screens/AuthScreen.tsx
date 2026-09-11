@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -16,6 +16,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { GoogleSignin, isErrorWithCode, isSuccessResponse, statusCodes } from '@react-native-google-signin/google-signin';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { colors, fonts } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 
@@ -41,6 +42,7 @@ export default function AuthScreen() {
     login,
     register,
     loginWithGoogle,
+    loginWithApple,
     reconnectWithCode,
     forgotPassword,
     resetPassword,
@@ -53,6 +55,19 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [googleSubmitting, setGoogleSubmitting] = useState(false);
+  // Sign in with Apple: sadece iOS 13+ ve o cihazda bir Apple ID oturumu
+  // açıksa gerçekten kullanılabilir -- isAvailableAsync() ile kontrol edip
+  // uygun değilse butonu hiç göstermiyoruz (Android'de zaten Platform.OS
+  // kontrolüyle en baştan elenir).
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [appleSubmitting, setAppleSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (Platform.OS !== 'ios') return;
+    AppleAuthentication.isAvailableAsync()
+      .then(setAppleAvailable)
+      .catch(() => setAppleAvailable(false));
+  }, []);
 
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotStep, setForgotStep] = useState<'request' | 'reset'>('request');
@@ -135,6 +150,44 @@ export default function AuthScreen() {
       Alert.alert('Google ile giriş başarısız oldu.', 'Kimlik jetonu alınamadı.');
     } finally {
       setGoogleSubmitting(false);
+    }
+  };
+
+  const handleApplePress = async () => {
+    if (appleSubmitting) return;
+    setAppleSubmitting(true);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      if (!credential.identityToken) {
+        throw new Error('Apple kimlik jetonu alınamadı.');
+      }
+      // fullName SADECE bu kullanıcının bu uygulamaya İLK yetkilendirmesinde
+      // dolu gelir -- sonraki girişlerde Apple bunu tekrar göndermez (kimlik
+      // token'ının içinde de yoktur). Bu yüzden yakalayıp sunucuya ayrıca
+      // gönderiyoruz (bkz. server/src/routes/auth.ts POST /auth/apple).
+      const fullName = credential.fullName
+        ? [credential.fullName.givenName, credential.fullName.familyName].filter(Boolean).join(' ').trim()
+        : undefined;
+      await loginWithApple(credential.identityToken, fullName || undefined);
+    } catch (e: any) {
+      // Kullanıcı Apple'ın kendi ekranını iptal ettiyse bu gerçek bir hata değil.
+      if (e?.code === 'ERR_REQUEST_CANCELED') {
+        return;
+      }
+      // loginWithApple'dan gelen hatalar context'teki error state üzerinden
+      // zaten ekranda gösteriliyor; burada sadece native SDK'nın kendi
+      // ürettiği (context'e hiç ulaşmayan) hatalar için ek bir uyarı gösteriyoruz.
+      if (!(e instanceof Error) || e.message !== 'Apple kimlik jetonu alınamadı.') {
+        return;
+      }
+      Alert.alert('Apple ile giriş başarısız oldu.', 'Kimlik jetonu alınamadı.');
+    } finally {
+      setAppleSubmitting(false);
     }
   };
 
@@ -318,6 +371,27 @@ export default function AuthScreen() {
                 değişkenleri hepsi olduğu gibi duruyor, tekrar açmak için
                 buraya sadece butonu (ve üstündeki "veya" ayraç satırını)
                 geri eklemek yeterli. */}
+
+            {appleAvailable && (
+              <>
+                <View style={styles.dividerRow}>
+                  <View style={styles.dividerLine} />
+                  <Text style={styles.dividerText}>VEYA</Text>
+                  <View style={styles.dividerLine} />
+                </View>
+                {/* Apple'ın kendi buton bileşeni: App Store Review
+                    Guideline 4.8 -- Sign in with Apple, HIG'e uygun kendi
+                    tasarımıyla gösterilmek ZORUNDA (özel bir Pressable ile
+                    taklit edilemez). */}
+                <AppleAuthentication.AppleAuthenticationButton
+                  buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                  buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.WHITE}
+                  cornerRadius={25}
+                  style={styles.appleButton}
+                  onPress={handleApplePress}
+                />
+              </>
+            )}
 
             <Pressable onPress={openReconnect} style={styles.demoButton}>
               <MaterialCommunityIcons name="cellphone-link" size={16} color={colors.primary} />
@@ -555,6 +629,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   altButtonText: { color: colors.foreground, fontFamily: fonts.body, fontSize: 14, fontWeight: '800' },
+  appleButton: { minHeight: 50, borderRadius: 25 },
   demoButton: {
     flexDirection: 'row',
     alignItems: 'center',
