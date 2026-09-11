@@ -159,6 +159,10 @@ function ensureColumn(table: string, column: string, ddl: string) {
 }
 ensureColumn('users', 'google_id', 'google_id TEXT');
 ensureColumn('users', 'facebook_id', 'facebook_id TEXT');
+// Apple ile giriş: Apple'ın identity token'ındaki "sub" claim'i, hesaba
+// kalıcı olarak bağlanır. google_id ile aynı desen -- bkz. routes/auth.ts
+// POST /auth/apple.
+ensureColumn('users', 'apple_id', 'apple_id TEXT');
 ensureColumn('users', 'reset_code_hash', 'reset_code_hash TEXT');
 ensureColumn('users', 'reset_code_expires', 'reset_code_expires TEXT');
 // Konum: karşılıklı paylaşım şartıyla tutulur -- ikisi de paylaştığında
@@ -201,6 +205,7 @@ ensureColumn('users', 'token_version', 'token_version INTEGER NOT NULL DEFAULT 0
 ensureColumn('users', 'driving_share_enabled', 'driving_share_enabled INTEGER NOT NULL DEFAULT 0');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL;');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_id ON users(facebook_id) WHERE facebook_id IS NOT NULL;');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_apple_id ON users(apple_id) WHERE apple_id IS NOT NULL;');
 db.exec('CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_id, created_at DESC);');
 // Neredeyse her route bir couple_id (ya da user_id) filtresiyle sorgu
 // çalıştırıyor (ör. "WHERE couple_id = ?") -- bu indeksler olmadan her

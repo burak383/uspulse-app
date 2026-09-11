@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import db from '../db';
 import { newId, newInviteCode, newResetCode } from '../util';
 import { requireAuth, signToken } from '../middleware/auth';
@@ -14,6 +15,20 @@ const GOOGLE_CLIENT_IDS = (process.env.GOOGLE_CLIENT_IDS || '')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+
+// Sign in with Apple: native expo-apple-authentication akışı, identity
+// token'ın "aud" claim'ini doğrudan uygulamanın bundle ID'sine (Services ID
+// değil) ayarlar -- bu yüzden Google'daki GOOGLE_CLIENT_IDS'in aksine burada
+// tek bir bundle ID yeterli. Yine de virgülle ayrılmış birden fazla değere
+// izin veriyoruz (ör. ileride bir web/Services ID eklenirse). Boşsa Apple ile
+// giriş bu sunucuda kapalı kabul edilir.
+const APPLE_AUDIENCES = (process.env.APPLE_CLIENT_IDS || 'app.uspulse.mobile')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+// Apple'ın imzalama anahtarları (JWKS) -- jose bunu kendi içinde cache'ler
+// ve gerektiğinde tazeler, biz sadece uç noktayı bir kez tanımlıyoruz.
+const APPLE_JWKS = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
 
 // Render, NODE_ENV'i otomatik ayarlamıyor (elle Dashboard'dan set edilmesi
 // gerekiyor) ama kendi RENDER ortam değişkenini her zaman otomatik koyuyor --
@@ -268,6 +283,78 @@ router.post('/google', async (req, res) => {
     res.json({ token, user: publicUser(row) });
   } catch (err) {
     console.error('Google ile giriş sırasında sunucu hatası:', err);
+    res.status(500).json({ error: 'Giriş sırasında bir sunucu hatası oluştu.' });
+  }
+});
+
+router.post('/apple', async (req, res) => {
+  const { identityToken, fullName } = req.body ?? {};
+  if (!identityToken) {
+    return res.status(400).json({ error: 'identityToken gerekli.' });
+  }
+
+  let payload: any;
+  try {
+    const verified = await jwtVerify(String(identityToken), APPLE_JWKS, {
+      issuer: 'https://appleid.apple.com',
+      audience: APPLE_AUDIENCES,
+    });
+    payload = verified.payload;
+  } catch {
+    return res.status(401).json({ error: 'Apple jetonu doğrulanamadı.' });
+  }
+
+  if (!payload?.sub) {
+    return res.status(401).json({ error: 'Apple jetonundan kimlik okunamadı.' });
+  }
+
+  const appleId = String(payload.sub);
+  // Apple, e-postayı (gerçek ya da "Hide My Email" gizli yönlendirme adresi)
+  // her girişte token'a gömer -- ama yalnızca kullanıcı ilk yetkilendirmede
+  // paylaşmayı kabul ettiyse. Daha sonraki girişlerde (aynı cihaz/hesapla)
+  // Apple bazen hiç göndermeyebilir; bu durumda zaten apple_id ile mevcut
+  // kaydı buluruz, e-postaya ihtiyaç duymayız.
+  const email = payload.email ? String(payload.email).toLowerCase() : null;
+  // Apple, ismi SADECE ilk yetkilendirmede -- ve token'ın içinde değil, native
+  // credential yanıtının ayrı bir alanında -- verir; istemci (AuthScreen.tsx)
+  // bunu ilk seferde yakalayıp buraya ayrıca gönderir.
+  const name = fullName && String(fullName).trim() ? String(fullName).trim() : email?.split('@')[0] ?? 'Kullanıcı';
+
+  try {
+    let row: any = db.prepare('SELECT * FROM users WHERE apple_id = ?').get(appleId);
+    if (!row && email) {
+      row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+      if (row) {
+        db.prepare('UPDATE users SET apple_id = ? WHERE id = ?').run(appleId, row.id);
+        row = db.prepare('SELECT * FROM users WHERE id = ?').get(row.id);
+      }
+    }
+
+    if (!row) {
+      if (!email) {
+        // Ne apple_id ile eşleşen bir hesap var ne de bir e-posta geldi --
+        // hesap oluşturamıyoruz (email sütunu NOT NULL UNIQUE). Bu, normal
+        // akışta neredeyse hiç yaşanmaz (Apple ilk yetkilendirmede her zaman
+        // e-posta izni sorar); kullanıcıya yeniden denemesini söylüyoruz.
+        return res
+          .status(400)
+          .json({ error: 'Apple hesabından e-posta bilgisi alınamadı. Lütfen tekrar deneyin.' });
+      }
+      const id = newId();
+      let inviteCode = newInviteCode();
+      while (db.prepare('SELECT 1 FROM users WHERE invite_code = ?').get(inviteCode)) {
+        inviteCode = newInviteCode();
+      }
+      db.prepare(
+        `INSERT INTO users (id, name, email, password_hash, invite_code, apple_id) VALUES (?, ?, ?, ?, ?, ?)`,
+      ).run(id, name, email, null, inviteCode, appleId);
+      row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    }
+
+    const token = signToken(row.id);
+    res.json({ token, user: publicUser(row) });
+  } catch (err) {
+    console.error('Apple ile giriş sırasında sunucu hatası:', err);
     res.status(500).json({ error: 'Giriş sırasında bir sunucu hatası oluştu.' });
   }
 });

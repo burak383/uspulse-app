@@ -72,6 +72,14 @@ services:
         sync: false
       - key: GOOGLE_CLIENT_IDS
         sync: false
+      # Sign in with Apple: identity token'ın "aud" claim'i buradaki
+      # değer(ler)e karşı doğrulanır. Boş bırakılırsa kod varsayılan olarak
+      # 'app.uspulse.mobile' (uygulamanın bundle ID'si) kullanır -- bkz.
+      # routes/auth.ts APPLE_AUDIENCES. Bu değişkeni Dashboard'a eklemen
+      # ŞART DEĞİL, sadece başka bir bundle ID/Services ID de kabul etmen
+      # gerekirse buraya virgülle ayırarak ekleyebilirsin.
+      - key: APPLE_CLIENT_IDS
+        sync: false
       - key: LEGAL_CONTACT_EMAIL
         sync: false
       # Yukarıdaki kalıcı diskin bağlandığı /var/data yolunun altında --
