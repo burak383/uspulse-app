@@ -418,7 +418,7 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
         const media: PickedMedia | null =
           kind === 'audio'
             ? recordedUri
-              ? { uri: recordedUri, mimeType: 'audio/m4a', fileName: 'ses-notu.m4a' }
+              ? { uri: recordedUri, mimeType: 'audio/mp4', fileName: 'ses-notu.m4a' }
               : null
             : pickedMedia;
         if (!media) {
