@@ -16,6 +16,7 @@ import {
   startDrivingLocationTracking,
   stopDrivingLocationTracking,
 } from '../location/drivingLocationTask';
+import { readBatteryInfo } from '../location/batteryInfo';
 import { configureRevenueCat, loginRevenueCatCouple, logoutRevenueCat } from '../subscriptions/purchases';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
@@ -288,7 +289,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       if (!granted) return;
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      await api.put('/me/location', { lat: pos.coords.latitude, lng: pos.coords.longitude });
+      const { batteryLevel, charging } = await readBatteryInfo();
+      await api.put('/me/location', {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        batteryLevel,
+        charging,
+      });
       setLocationSharedByMe(true);
 
       // Arka planda da takip edebilmek için "her zaman izin ver" konumunu da
@@ -373,6 +380,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
+        // Hesaba başka bir cihazdan giriş yapıldıysa (bkz. server/src/routes/
+        // auth.ts invalidateOtherSessions) bu cihazın jetonu artık geçersiz --
+        // burada tam bir çıkış yapıyoruz: konum/sürüş takibi gibi arka plan
+        // görevlerini de durduruyoruz ki bu cihaz artık kimse görmeyecek
+        // güncellemeleri sessizce göndermeye devam etmesin. e.message
+        // (requireAuth'un döndürdüğü, ör. "Bu oturum artık geçerli değil...")
+        // error state'e yazılıyor ki kullanıcı Giriş ekranına neden
+        // düştüğünü anlayabilsin (bkz. AuthScreen.tsx {error && ...}).
+        await stopBackgroundLocationTracking().catch(() => {});
+        setBackgroundLocationEnabled(false);
+        await stopDrivingLocationTracking().catch(() => {});
+        setDrivingShareEnabled(false);
         await deleteSecureItemAsync(TOKEN_KEY).catch(() => {});
         setAuthToken(null);
         setUser(null);
@@ -382,6 +401,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLocationSharedByMe(false);
         setLocationSharedByPartner(false);
         setEntitlement(null);
+        setError(e.message || 'Oturumun sona erdi. Lütfen tekrar giriş yap.');
         setStatus('signedOut');
         return;
       }
@@ -408,7 +428,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error('Konum izni verilmedi. Ayarlardan UsPulse için konum iznini açabilirsin.');
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      await api.put('/me/location', { lat: pos.coords.latitude, lng: pos.coords.longitude });
+      const { batteryLevel, charging } = await readBatteryInfo();
+      await api.put('/me/location', {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        batteryLevel,
+        charging,
+      });
 
       // Bunu açıkça bastığı için burada "her zaman izin ver" konumunu da
       // isteriz -- arka planda da takip edebilmek için gerekli. Reddedilirse

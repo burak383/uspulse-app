@@ -67,6 +67,10 @@ router.get('/', requireAuth, (req, res) => {
     locationSharedByPartner: partnerShared,
     partnerLat: mutualShare ? partner.lat : null,
     partnerLng: mutualShare ? partner.lng : null,
+    // Konum paylaşımıyla aynı karşılıklılık şartına tabi -- bkz. db.ts'teki
+    // battery_level/battery_charging açıklaması.
+    partnerBatteryLevel: mutualShare && partner.battery_level != null ? partner.battery_level : null,
+    partnerBatteryCharging: mutualShare && partner.battery_level != null ? Boolean(partner.battery_charging) : null,
     // Sürüş takibi paylaşımı (bkz. routes/driving.ts) diğer cihazlarla
     // senkron kalması için sunucu tarafında (AsyncStorage değil) tutulur.
     drivingShareEnabled: Boolean(row.driving_share_enabled),
@@ -75,7 +79,7 @@ router.get('/', requireAuth, (req, res) => {
 });
 
 router.put('/location', requireAuth, (req, res) => {
-  const { lat, lng } = req.body ?? {};
+  const { lat, lng, batteryLevel, charging } = req.body ?? {};
   const latNum = Number(lat);
   const lngNum = Number(lng);
   if (
@@ -88,9 +92,24 @@ router.put('/location', requireAuth, (req, res) => {
   ) {
     return res.status(400).json({ error: 'Geçerli bir lat/lng gerekli.' });
   }
+  // batteryLevel/charging isteğe bağlı -- eski istemci sürümleri (ya da
+  // expo-battery'nin -1 döndürdüğü iOS simülatörü gibi durumlar) bunları hiç
+  // göndermeyebilir; o zaman ilgili sütun mevcut değerinde kalır (COALESCE),
+  // partnerin ekranında "eski ama yanlış olmayan" bir yüzde görünür.
+  const batteryNum = Number(batteryLevel);
+  const hasBattery = Number.isFinite(batteryNum) && batteryNum >= 0 && batteryNum <= 100;
   db.prepare(
-    "UPDATE users SET lat = ?, lng = ?, location_updated_at = datetime('now') WHERE id = ?",
-  ).run(latNum, lngNum, req.user!.id);
+    `UPDATE users SET lat = ?, lng = ?, location_updated_at = datetime('now'),
+     battery_level = COALESCE(?, battery_level),
+     battery_charging = COALESCE(?, battery_charging)
+     WHERE id = ?`,
+  ).run(
+    latNum,
+    lngNum,
+    hasBattery ? Math.round(batteryNum) : null,
+    typeof charging === 'boolean' ? (charging ? 1 : 0) : null,
+    req.user!.id,
+  );
   res.status(204).end();
 });
 

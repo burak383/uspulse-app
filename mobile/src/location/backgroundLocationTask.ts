@@ -13,6 +13,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as SecureStore from 'expo-secure-store';
 import { API_URL } from '../api/client';
+import { readBatteryInfo } from './batteryInfo';
 
 export const BACKGROUND_LOCATION_TASK = 'uspulse-background-location-task';
 
@@ -32,10 +33,16 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
   try {
     const token = await SecureStore.getItemAsync(TOKEN_KEY);
     if (!token) return;
+    const { batteryLevel, charging } = await readBatteryInfo();
     await fetch(`${API_URL}/me/location`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ lat: last.coords.latitude, lng: last.coords.longitude }),
+      body: JSON.stringify({
+        lat: last.coords.latitude,
+        lng: last.coords.longitude,
+        batteryLevel,
+        charging,
+      }),
     });
   } catch {
     // ağ hatası ya da sunucu geçici olarak erişilemez -- bir sonraki

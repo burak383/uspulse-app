@@ -21,6 +21,16 @@ const colors = theme.colors;
 // saniyede bir tazeleniyor, ekrandan çıkınca durur.
 const POLL_MS = 5000;
 
+// MaterialCommunityIcons'ta sadece 10'un katları için ayrı bir "dolgu"
+// ikonu var (battery-10, battery-20, ... battery-90) + tam dolu için
+// düz "battery" -- yüzdeyi en yakın 10'a yuvarlayıp bu setten seçiyoruz.
+type BatteryIconName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+function batteryIconFor(level: number, charging: boolean | null): BatteryIconName {
+  if (charging) return 'battery-charging';
+  const rounded = Math.min(90, Math.max(10, Math.round(level / 10) * 10));
+  return level >= 95 ? 'battery' : (`battery-${rounded}` as BatteryIconName);
+}
+
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PartnerKonum'>;
 
 export default function PartnerLocationScreen({ navigation }: { navigation: NavProp }) {
@@ -120,7 +130,18 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
           {me.distanceKm != null && (
             <View style={styles.distanceCard}>
               <MaterialCommunityIcons name="map-marker-distance" size={20} color={colors.primary} />
-              <Text style={styles.distanceText}>Aranızda ~{me.distanceKm} km var</Text>
+              <Text style={[styles.distanceText, { flex: 1 }]}>Aranızda ~{me.distanceKm} km var</Text>
+              {me.partnerBatteryLevel != null && (
+                <>
+                  <View style={styles.distanceDivider} />
+                  <MaterialCommunityIcons
+                    name={batteryIconFor(me.partnerBatteryLevel, me.partnerBatteryCharging)}
+                    size={20}
+                    color={me.partnerBatteryLevel <= 20 && !me.partnerBatteryCharging ? colors.destructive : colors.primary}
+                  />
+                  <Text style={styles.distanceText}>%{me.partnerBatteryLevel}</Text>
+                </>
+              )}
             </View>
           )}
         </View>
@@ -197,4 +218,9 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   distanceText: { fontFamily: theme.fonts.heading, fontSize: 15, color: colors.foreground },
+  distanceDivider: {
+    width: 1,
+    alignSelf: 'stretch',
+    backgroundColor: colors.border,
+  },
 });

@@ -41,6 +41,10 @@ export interface MeResponse {
   /** Partnerin canlı enlem/boylamı -- yalnızca ikiniz de konum paylaştıysanız dolu gelir (bkz. PartnerKonum ekranı). */
   partnerLat: number | null;
   partnerLng: number | null;
+  /** Partnerin telefon şarj yüzdesi (0-100) -- konum paylaşımıyla aynı karşılıklılık şartına tabi. */
+  partnerBatteryLevel: number | null;
+  /** Partnerin telefonu şu an şarjda mı -- partnerBatteryLevel dolu geldiğinde anlamlı. */
+  partnerBatteryCharging: boolean | null;
   /** Sürüş takibini (anlık hız + rota) partnere açtın mı -- bkz. DrivingContext. */
   drivingShareEnabled: boolean;
   entitlement: Entitlement | null;

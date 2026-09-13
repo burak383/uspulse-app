@@ -172,6 +172,15 @@ ensureColumn('users', 'reset_code_expires', 'reset_code_expires TEXT');
 ensureColumn('users', 'lat', 'lat REAL');
 ensureColumn('users', 'lng', 'lng REAL');
 ensureColumn('users', 'location_updated_at', 'location_updated_at TEXT');
+// Telefon şarj yüzdesi (0-100) ve şarj olup olmadığı -- konum güncellemesiyle
+// (PUT /me/location) birlikte, ekstra bir istek yapmadan gönderilir. Konum
+// paylaşımıyla AYNI karşılıklılık şartına tabi (bkz. routes/me.ts GET /):
+// partnerin şarj yüzdesi de yalnızca ikiniz de konum paylaşıyorsanız görünür
+// -- ayrı bir izin/gizlilik anahtarı eklemek yerine mevcut konum onayına
+// bindirildi, çünkü zaten "canlı konumumu görebiliyorsun" dediğin an cihaz
+// telemetrisi paylaşımını da kabul etmiş oluyorsun.
+ensureColumn('users', 'battery_level', 'battery_level INTEGER');
+ensureColumn('users', 'battery_charging', 'battery_charging INTEGER');
 // Partnerin telefonuna gerçek zamanlı "dokunuş" bildirimi (ve titreşim)
 // gönderebilmek için Expo push jetonu -- bkz. routes/touches.ts.
 ensureColumn('users', 'push_token', 'push_token TEXT');
