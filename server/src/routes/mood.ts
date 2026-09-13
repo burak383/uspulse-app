@@ -9,7 +9,18 @@ import { notifyPartner } from '../notify';
 const router = Router();
 router.use(requireAuth, requireCouple, requireEntitlement);
 
-const ALLOWED_MOODS = ['Neşeli', 'Sakin', 'Özlemli', 'Yorgun', 'Modunda', 'Heyecanlı'];
+const ALLOWED_MOODS = [
+  'Neşeli',
+  'Sakin',
+  'Özlemli',
+  'Yorgun',
+  'Modunda',
+  'Heyecanlı',
+  'Sinirli',
+  'Üzgün',
+  'Hasta',
+  'Şaşkın',
+];
 
 // Dakikada en fazla 10 ruh hali güncellemesi -- her biri partnere bildirim
 // gönderiyor, sınırsız olması bildirim spam'ine açık kapı bırakır.
