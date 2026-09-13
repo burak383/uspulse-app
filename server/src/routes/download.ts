@@ -11,10 +11,12 @@ const router = Router();
 const APP_NAME = 'UsPulse';
 const ANDROID_PACKAGE = 'app.uspulse.mobile';
 const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${ANDROID_PACKAGE}`;
-// NOT: iOS'ta henüz bir App Store listelemesi yok (uygulama şimdilik sadece
-// Android'de yayınlanacak) -- iOS App Store linki eklendiğinde burası
-// güncellenip aşağıdaki iOS dalı da gerçek mağaza linkine yönlendirilebilir.
-const IOS_APP_STORE_URL: string | null = null;
+// App Store Connect'te oluşturulan uygulama kaydının Apple ID'si (bkz.
+// appstoreconnect.apple.com/apps/6810957187/...) -- uygulama henüz
+// incelemeden geçip yayınlanmadığı için bu link şimdilik Apple'da "mevcut
+// değil" gösterebilir, ama App Store'da yayına girer girmez otomatik olarak
+// doğru sayfaya yönlendirmeye başlar; ayrıca değiştirmeye gerek yok.
+const IOS_APP_STORE_URL: string | null = 'https://apps.apple.com/app/id6810957187';
 
 function page(bodyHtml: string): string {
   return `<!doctype html>
