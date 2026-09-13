@@ -30,7 +30,26 @@ const MEDIA_RULES: Record<string, { allowedMimes: string[]; maxBytes: number }> 
     maxBytes: 50 * 1024 * 1024, // ~50MB
   },
   audio: {
-    allowedMimes: ['audio/mp4', 'audio/aac', 'audio/mpeg', 'audio/wav', 'audio/x-wav', 'audio/webm'],
+    // audio/mp4: mobile/screens/AnLar.tsx'in kaydettiği ses notu (expo-audio
+    // HIGH_QUALITY -> .m4a/AAC) burada -- 'audio/m4a' resmi/standart bir MIME
+    // türü DEĞİL, bu yüzden istemci 'audio/mp4' gönderiyor. Geri kalanlar,
+    // farklı cihaz/kütüphanelerin üretebileceği yaygın ses biçimleri için
+    // (eski Android kayıtları, üçüncü taraf ses seçicileri vb.) ek güvenlik payı.
+    allowedMimes: [
+      'audio/mp4',
+      'audio/x-m4a',
+      'audio/aac',
+      'audio/mpeg',
+      'audio/wav',
+      'audio/x-wav',
+      'audio/webm',
+      'audio/ogg',
+      'audio/flac',
+      'audio/3gpp',
+      'audio/3gpp2',
+      'audio/amr',
+      'audio/x-caf',
+    ],
     maxBytes: 15 * 1024 * 1024, // ~15MB
   },
 };
@@ -49,11 +68,18 @@ const EXT_BY_MIME: Record<string, string> = {
   'video/quicktime': '.mov',
   'video/3gpp': '.3gp',
   'audio/mp4': '.m4a',
+  'audio/x-m4a': '.m4a',
   'audio/aac': '.m4a',
   'audio/mpeg': '.mp3',
   'audio/wav': '.wav',
   'audio/x-wav': '.wav',
   'audio/webm': '.webm',
+  'audio/ogg': '.ogg',
+  'audio/flac': '.flac',
+  'audio/3gpp': '.3gp',
+  'audio/3gpp2': '.3g2',
+  'audio/amr': '.amr',
+  'audio/x-caf': '.caf',
 };
 
 function extFor(mimetype: string, originalname: string) {
