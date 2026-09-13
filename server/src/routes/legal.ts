@@ -62,6 +62,30 @@ function page(title: string, bodyHtml: string): string {
 </html>`;
 }
 
+router.get('/support', (_req, res) => {
+  res.type('html').send(
+    page(
+      'Destek',
+      `
+      <p>${APP_NAME} ile ilgili bir sorunla mı karşılaştın, bir öneri mi iletmek istiyorsun, ya da hesabınla ilgili yardıma mı ihtiyacın var? Aşağıdaki adresten bize ulaşabilirsin.</p>
+
+      <h2>Bize ulaş</h2>
+      <p>Sorularını, hata bildirimlerini ve önerilerini <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> adresine yazabilirsin. Mümkünse hangi cihazı/işletim sistemini kullandığını ve sorunu nasıl tekrar oluşturabileceğimizi kısaca belirt; bu bize daha hızlı yardımcı olma imkanı verir.</p>
+
+      <h2>Sık sorulan konular</h2>
+      <ul>
+        <li><strong>Eşleşme kodu çalışmıyor:</strong> Davet kodunun süresi dolmuş olabilir; partnerinin Biz sekmesinden yeni bir kod üretip tekrar paylaşmasını iste.</li>
+        <li><strong>Bildirim/konum gelmiyor:</strong> Cihaz ayarlarından ${APP_NAME}'e bildirim ve konum izni verildiğinden emin ol; Biz sekmesindeki ilgili paylaşım anahtarının da açık olması gerekir.</li>
+        <li><strong>Hesabımı silmek istiyorum:</strong> <a href="/data-deletion">Kullanıcı Verilerinin Silinmesi</a> sayfasına bakabilirsin.</li>
+        <li><strong>Abonelik/faturalandırma:</strong> Satın alma işlemi App Store/Google Play üzerinden yürütüldüğü için iade ve fatura talepleri ilgili mağazanın destek kanalları üzerinden de yapılabilir.</li>
+      </ul>
+
+      <p>Ayrıca <a href="/privacy">Gizlilik Politikası</a> ve <a href="/terms">Kullanım Koşulları</a> sayfalarına da göz atabilirsin.</p>
+      `,
+    ),
+  );
+});
+
 router.get('/privacy', (_req, res) => {
   res.type('html').send(
     page(
