@@ -56,6 +56,23 @@ function checkRateLimit(key: string, maxAttempts: number, windowMs: number): boo
   return entry.count <= maxAttempts;
 }
 
+// Aynı hesaba başka bir cihazdan/oturumda daha önce giriş yapılmış olabilir --
+// token_version'ı artırmak o eski oturumun jetonunu (bkz. middleware/auth.ts
+// requireAuth, zaten token_version eşleşmesini kontrol ediyordu -- şimdiye
+// kadar sadece şifre sıfırlamada kullanılıyordu) anında geçersiz kılar. Eski
+// cihaz bir sonraki istekte/ön plana dönüşte 401 alıp otomatik çıkış yapar
+// (bkz. AuthContext.tsx refresh()). Bu, hesabın aynı anda sadece TEK bir
+// cihazda açık kalmasını sağlar -- konum paylaşımı/sürüş takibi gibi cihaza
+// özgü arka plan görevlerinin iki cihazda birden çalışıp çakışmasını (ve pilin
+// boşuna tüketilmesini) önlemek için bilinçli bir tercih; yeni cihazda
+// giriş yapıldığında bu görevler zaten normal akışta (refresh() ->
+// syncBackgroundLocationTracking/syncDrivingLocationTracking) o cihazda
+// yeniden başlıyor. register'da ÇAĞRILMIYOR -- henüz geçersiz kılınacak bir
+// önceki oturum yok.
+function invalidateOtherSessions(userId: string) {
+  db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(userId);
+}
+
 function publicUser(row: any) {
   return {
     id: row.id,
@@ -115,6 +132,7 @@ router.post('/login', (req, res) => {
   if (!bcrypt.compareSync(String(password), row.password_hash)) {
     return res.status(401).json({ error: 'E-posta veya şifre hatalı.' });
   }
+  invalidateOtherSessions(row.id);
   const token = signToken(row.id);
   res.json({ token, user: publicUser(row) });
 });
@@ -279,6 +297,7 @@ router.post('/google', async (req, res) => {
       row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     }
 
+    invalidateOtherSessions(row.id);
     const token = signToken(row.id);
     res.json({ token, user: publicUser(row) });
   } catch (err) {
@@ -351,6 +370,7 @@ router.post('/apple', async (req, res) => {
       row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     }
 
+    invalidateOtherSessions(row.id);
     const token = signToken(row.id);
     res.json({ token, user: publicUser(row) });
   } catch (err) {
@@ -388,6 +408,9 @@ router.post('/reconnect', (req, res) => {
     return res.status(404).json({ error: 'Bu kod geçerli değil.' });
   }
 
+  // reconnect'in tüm amacı zaten "bu hesaba YENİ bir cihazdan gir" -- eski
+  // cihazın oturumunu burada kesmek özellikle önemli (bkz. invalidateOtherSessions).
+  invalidateOtherSessions(row.id);
   const token = signToken(row.id);
   res.json({ token, user: publicUser(row) });
 });
