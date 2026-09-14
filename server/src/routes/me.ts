@@ -71,12 +71,24 @@ router.get('/', requireAuth, (req, res) => {
     // battery_level/battery_charging açıklaması.
     partnerBatteryLevel: mutualShare && partner.battery_level != null ? partner.battery_level : null,
     partnerBatteryCharging: mutualShare && partner.battery_level != null ? Boolean(partner.battery_charging) : null,
+    // Partnerin şu anki konumunda ne zamandır olduğu -- Konum sekmesinde
+    // avatarına dokununca gösteriliyor (bkz. mobile/screens/PartnerKonum.tsx).
+    // Aynı karşılıklılık şartına tabi.
+    partnerStationarySince: mutualShare ? partner.stationary_since : null,
     // Sürüş takibi paylaşımı (bkz. routes/driving.ts) diğer cihazlarla
     // senkron kalması için sunucu tarafında (AsyncStorage değil) tutulur.
     drivingShareEnabled: Boolean(row.driving_share_enabled),
     entitlement,
   });
 });
+
+// Konum her güncellemede (birkaç dakikada bir) tazelenir, hareket edilmese
+// bile -- bu yüzden "ne zamandır buradasın" sorusuna cevap vermek için ayrı
+// bir eşik gerekiyor. GPS'in kendi ölçüm sapması (bina içi/dışı, sokak
+// kenarı vs.) birkaç metre ile birkaç on metre arasında değişebildiğinden,
+// gerçekten "başka bir yere gitti" sayılması için bundan daha büyük bir
+// hareket arıyoruz.
+const STATIONARY_MOVE_THRESHOLD_KM = 0.12; // ~120 metre
 
 router.put('/location', requireAuth, (req, res) => {
   const { lat, lng, batteryLevel, charging } = req.body ?? {};
@@ -98,14 +110,30 @@ router.put('/location', requireAuth, (req, res) => {
   // partnerin ekranında "eski ama yanlış olmayan" bir yüzde görünür.
   const batteryNum = Number(batteryLevel);
   const hasBattery = Number.isFinite(batteryNum) && batteryNum >= 0 && batteryNum <= 100;
+
+  // Yeni konum, mevcut kayıtlı konumdan anlamlı ölçüde uzaksa (ya da hiç
+  // konum yoksa) "buradasın" sayacı şimdi'den başlıyor; aksi halde eski
+  // başlangıç zamanı korunuyor.
+  const current: any = db
+    .prepare('SELECT lat, lng, stationary_since FROM users WHERE id = ?')
+    .get(req.user!.id);
+  const hasPreviousLocation = current?.lat != null && current?.lng != null;
+  const moved =
+    !hasPreviousLocation ||
+    !current.stationary_since ||
+    distanceKm(current.lat, current.lng, latNum, lngNum) > STATIONARY_MOVE_THRESHOLD_KM;
+  const stationarySince = moved ? new Date().toISOString().slice(0, 19).replace('T', ' ') : current.stationary_since;
+
   db.prepare(
     `UPDATE users SET lat = ?, lng = ?, location_updated_at = datetime('now'),
+     stationary_since = ?,
      battery_level = COALESCE(?, battery_level),
      battery_charging = COALESCE(?, battery_charging)
      WHERE id = ?`,
   ).run(
     latNum,
     lngNum,
+    stationarySince,
     hasBattery ? Math.round(batteryNum) : null,
     typeof charging === 'boolean' ? (charging ? 1 : 0) : null,
     req.user!.id,
@@ -114,7 +142,9 @@ router.put('/location', requireAuth, (req, res) => {
 });
 
 router.delete('/location', requireAuth, (req, res) => {
-  db.prepare('UPDATE users SET lat = NULL, lng = NULL, location_updated_at = NULL WHERE id = ?').run(
+  db.prepare(
+    'UPDATE users SET lat = NULL, lng = NULL, location_updated_at = NULL, stationary_since = NULL WHERE id = ?',
+  ).run(
     req.user!.id,
   );
   res.status(204).end();
@@ -178,6 +208,16 @@ function isValidAvatarImage(dataUri: string): boolean {
   return rule.signatures.some((sig) => sig.every((byte, i) => buf[i] === byte));
 }
 
+// Eşleştikten sonraki avatar seçim ekranındaki hazır (kadın/erkek) avatarlar
+// (bkz. mobile/src/avatars/presets.ts) gerçek bir fotoğraf YÜKLEMİYOR --
+// sadece "preset:<kategori>:<ikon-adı>" biçiminde küçük bir metin
+// gönderiyor, biz de bunu diğer fotoğraflarla aynı avatar_url sütununda
+// saklıyoruz. Buradaki doğrulama kasıtlı olarak sadece BİÇİMİ kontrol
+// ediyor (belirli bir ikon listesine karşı DEĞİL) -- ikon/renk anlamı tümüyle
+// istemci tarafında yaşıyor (uygulamadaki diğer ikon adları gibi), burada
+// sadece rastgele/uzun bir string'in bu sütuna yazılmasını engelliyoruz.
+const PRESET_AVATAR_PATTERN = /^preset:(kadin|erkek):[a-z0-9-]{1,40}$/;
+
 router.put('/avatar', requireAuth, (req, res) => {
   const { image } = req.body ?? {};
   if (typeof image !== 'string' || image.length > MAX_AVATAR_BASE64_LENGTH) {
@@ -186,7 +226,7 @@ router.put('/avatar', requireAuth, (req, res) => {
     }
     return res.status(400).json({ error: 'Geçerli bir resim (data:image/...;base64,...) gerekli.' });
   }
-  if (!isValidAvatarImage(image)) {
+  if (!PRESET_AVATAR_PATTERN.test(image) && !isValidAvatarImage(image)) {
     return res.status(400).json({ error: 'Geçerli bir resim (data:image/...;base64,...) gerekli.' });
   }
   db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run(image, req.user!.id);

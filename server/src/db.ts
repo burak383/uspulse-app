@@ -181,6 +181,15 @@ ensureColumn('users', 'location_updated_at', 'location_updated_at TEXT');
 // telemetrisi paylaşımını da kabul etmiş oluyorsun.
 ensureColumn('users', 'battery_level', 'battery_level INTEGER');
 ensureColumn('users', 'battery_charging', 'battery_charging INTEGER');
+// Kullanıcının şu anki lat/lng'de NE ZAMANDIR olduğu -- lat/lng her konum
+// güncellemesinde (birkaç dakikada bir) değişse de değişmese de yenilenir,
+// bu yüzden ayrı bir sütun gerekiyor: konum anlamlı ölçüde DEĞİŞMEDİĞİ
+// sürece bu değer sabit kalır, gerçekten hareket edilince "şimdi"ye
+// sıfırlanır (bkz. routes/me.ts PUT /location, STATIONARY_MOVE_THRESHOLD_KM).
+// Konum sekmesinde partnerin avatarına dokununca "X saattir buradasın" gibi
+// göstermek için kullanılıyor -- konum paylaşımıyla AYNI karşılıklılık
+// şartına tabi.
+ensureColumn('users', 'stationary_since', 'stationary_since TEXT');
 // Partnerin telefonuna gerçek zamanlı "dokunuş" bildirimi (ve titreşim)
 // gönderebilmek için Expo push jetonu -- bkz. routes/touches.ts.
 ensureColumn('users', 'push_token', 'push_token TEXT');
