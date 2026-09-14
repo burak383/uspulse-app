@@ -2,7 +2,6 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Linking,
   Pressable,
   SafeAreaView,
@@ -14,8 +13,6 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
-import * as ImageManipulator from 'expo-image-manipulator';
 import * as Clipboard from 'expo-clipboard';
 import Purchases from 'react-native-purchases';
 import { useFocusEffect } from '@react-navigation/native';
@@ -23,11 +20,14 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 import { isRevenueCatConfigured } from '../src/subscriptions/purchases';
-import { isoDateToDisplay } from '../src/utils/date';
+import { isoDateToDisplay, parseSqliteTimestamp } from '../src/utils/date';
 import { api, API_URL } from '../src/api/client';
 import { Memory, MoodResponse, TouchesResponse } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 import { confirmAsync } from '../src/utils/confirm';
+import { AvatarView } from '../src/components/AvatarView';
+import { removeAvatar as removeAvatarRequest } from '../src/media/avatarUpload';
+import { BottomTabBar } from '../src/components/BottomTabBar';
 
 const colors = theme.colors;
 
@@ -202,15 +202,12 @@ function LinkRow({
 }
 
 function daysSince(dateStr?: string | null) {
-  if (!dateStr) return 0;
-  // Sunucu created_at'i SQLite datetime('now') ile UTC olarak üretiyor,
-  // ancak "Z" son eki olmadan (bkz. server/src/db.ts) -- bu yüzden yalnızca
-  // boşluğu "T" yapmak yeterli değil, JS'in bunu YEREL saat sanmasını
-  // önlemek için sona "Z" de eklememiz gerekiyor. Aksi halde UTC'den uzak
-  // dilimlerdeki (ör. TRT +3) kullanıcılarda bu sayaç yanlış (özellikle gece
-  // yarısına yakın off-by-one) çıkıyordu.
-  const isoLike = dateStr.includes('T') ? dateStr : `${dateStr.replace(' ', 'T')}Z`;
-  const start = new Date(isoLike);
+  // bkz. src/utils/date.ts parseSqliteTimestamp -- sunucunun UTC ama "Z"
+  // son eki olmayan datetime('now') biçimini JS'in yerel saat sanmasını
+  // önleyen ortak yardımcı (PartnerKonum.tsx'teki "ne zamandır buradasın"
+  // hesaplamasıyla aynı).
+  const start = parseSqliteTimestamp(dateStr);
+  if (!start) return 0;
   const diff = Date.now() - start.getTime();
   return Math.max(0, Math.floor(diff / 86400000));
 }
@@ -251,53 +248,21 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-  const pickAndUploadAvatar = async () => {
-    try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert(
-          'Fotoğraf izni gerekli',
-          'Profil fotoğrafı seçebilmek için Ayarlar\'dan UsPulse\'a fotoğraf erişimi vermelisin.',
-        );
-        return;
-      }
-      const picked = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-      if (picked.canceled || !picked.assets?.[0]) return;
-
-      setAvatarUploading(true);
-      // 512x512'ye küçült + sıkıştır: telefon kamerasından gelen orijinal
-      // fotoğraf birkaç MB olabilir, avatar için buna hiç gerek yok --
-      // hem yükleme hızlı olsun hem de sunucudaki (SQLite) kayıt küçük kalsın.
-      const manipulated = await ImageManipulator.manipulateAsync(
-        picked.assets[0].uri,
-        [{ resize: { width: 512, height: 512 } }],
-        { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true },
-      );
-      if (!manipulated.base64) {
-        throw new Error('Fotoğraf işlenemedi.');
-      }
-      await api.put('/me/avatar', { image: `data:image/jpeg;base64,${manipulated.base64}` });
-      await refresh();
-    } catch (e) {
-      Alert.alert('Fotoğraf yüklenemedi', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
-    } finally {
-      setAvatarUploading(false);
-    }
-  };
-
+  // Fotoğraf seçme/çekme akışının kendisi (izin isteme, kamera/galeri,
+  // 512x512'ye sıkıştırma) artık src/media/avatarUpload.ts'te -- bu ekranda
+  // sadece dokununca AvatarSecimi.tsx'e gidiyoruz (bkz. avatarStack
+  // Pressable'ı aşağıda), o ekran hem kamera/galeri hem de hazır
+  // kadın/erkek avatarlarını sunuyor. Küçük "x" rozetiyle hızlı kaldırma
+  // ise buradan direkt yapılabiliyor, ekstra ekrana gitmeye gerek yok.
+  //
   // NOT: Bu eskiden tek bir "Profil fotoğrafı" Alert.alert action sheet'i
   // (Fotoğraf seç / Fotoğrafı kaldır / Vazgeç) ile açılıyordu, ama
   // react-native-web'de Alert.alert tamamen no-op (bkz. src/utils/
   // confirm.ts) -- yani web'de bu menü hiç açılmıyor, ne yeni fotoğraf
   // seçilebiliyor ne de kaldırılabiliyordu. Onun yerine avatar artık her
-  // zaman doğrudan fotoğraf seçiyor, kaldırma ise ayrı küçük bir rozet
-  // (aşağıdaki JSX'te avatarRemoveBadge) + confirmAsync onayıyla yapılıyor
-  // -- hem web'de gerçekten çalışıyor hem de bir adım kısalmış oluyor.
+  // zaman doğrudan AvatarSecimi'ye gidiyor, kaldırma ise ayrı küçük bir
+  // rozet (aşağıdaki JSX'te avatarRemoveBadge) + confirmAsync onayıyla
+  // yapılıyor -- hem web'de gerçekten çalışıyor hem de bir adım kısalmış oluyor.
   const removeAvatar = async () => {
     const confirmed = await confirmAsync(
       'Fotoğrafı kaldır',
@@ -307,7 +272,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     if (!confirmed) return;
     setAvatarUploading(true);
     try {
-      await api.delete('/me/avatar');
+      await removeAvatarRequest();
       await refresh();
     } catch {
       Alert.alert('Kaldırılamadı', 'Lütfen tekrar dene.');
@@ -552,15 +517,13 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
               <Pressable
                 accessibilityLabel="Profil fotoğrafını değiştir"
                 style={[styles.avatar, styles.elifAvatar]}
-                onPress={pickAndUploadAvatar}
+                onPress={() => navigation.navigate('AvatarSecimi')}
                 disabled={avatarUploading}
               >
                 {avatarUploading ? (
                   <ActivityIndicator color={colors.mutedForeground} />
-                ) : user?.avatarUrl ? (
-                  <Image source={{ uri: user.avatarUrl }} style={styles.avatarImage} />
                 ) : (
-                  <Icon name="account" size={32} color={colors.mutedForeground} />
+                  <AvatarView avatarUrl={user?.avatarUrl} size={78} />
                 )}
                 <View style={styles.avatarEditBadge}>
                   <Icon name="camera" size={13} color={colors.primaryForeground} />
@@ -577,11 +540,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
                 )}
               </Pressable>
               <View style={[styles.avatar, styles.denizAvatar]}>
-                {partner?.avatarUrl ? (
-                  <Image source={{ uri: partner.avatarUrl }} style={styles.avatarImage} />
-                ) : (
-                  <Icon name="account" size={32} color={colors.mutedForeground} />
-                )}
+                <AvatarView avatarUrl={partner?.avatarUrl} size={78} />
               </View>
               <View style={styles.heartBadge}>
                 <Icon name="hand-heart" size={20} color={colors.primaryForeground} />
@@ -904,24 +863,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
         </Pressable>
       </ScrollView>
 
-      <View style={styles.tabBar}>
-        {(
-          [
-            ['home-outline', 'Yuva', 'Yuva'],
-            ['calendar-month-outline', 'Planlar', 'Planlar'],
-            ['image-multiple-outline', 'Anılar', 'Anilar'],
-            ['account-group-outline', 'Biz', 'Biz'],
-          ] as [IconName, string, TabRouteName][]
-        ).map(([icon, label, route]) => {
-          const active = route === 'Biz';
-          return (
-            <Pressable key={label} style={[styles.tab, active && styles.activeTab]} onPress={() => goTab(route)}>
-              <Icon name={icon} size={21} color={active ? colors.primary : colors.mutedForeground} />
-              <Text style={[styles.tabLabel, active && { color: colors.primary }]}>{label}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <BottomTabBar active="Biz" onNavigate={goTab} />
     </SafeAreaView>
   );
 }
@@ -1004,11 +946,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.input,
-  },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 35,
   },
   avatarEditBadge: {
     position: 'absolute',
@@ -1328,38 +1265,5 @@ const styles = StyleSheet.create({
     fontFamily: theme.fonts.body,
     fontSize: 14,
     fontWeight: '800',
-  },
-  tabBar: {
-    position: 'absolute',
-    bottom: 20,
-    alignSelf: 'center',
-    width: '90%',
-    maxWidth: 350,
-    paddingHorizontal: 8,
-    paddingVertical: 9,
-    borderRadius: 32,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.secondary,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  tab: {
-    minWidth: 68,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 24,
-    alignItems: 'center',
-    gap: 3,
-  },
-  activeTab: {
-    backgroundColor: colors.primary,
-    opacity: 0.95,
-  },
-  tabLabel: {
-    color: colors.mutedForeground,
-    fontFamily: theme.fonts.body,
-    fontSize: 10,
-    fontWeight: '700',
   },
 });

@@ -73,3 +73,19 @@ export function isoDateToDisplay(iso: string | null | undefined, fallback = ''):
   const [, year, month, day] = match;
   return `${day}.${month}.${year}`;
 }
+
+/**
+ * Sunucunun SQLite datetime('now') ile ürettiği zaman damgaları ("YYYY-MM-DD
+ * HH:MM:SS", UTC ama "Z" son eki OLMADAN -- bkz. server/src/db.ts) doğrudan
+ * `new Date(...)`'e verilirse JS bunu YEREL saat sanar (Z yoksa tarayıcı/RN
+ * motoru yerel saat dilimini varsayar) -- bu da UTC'den uzak dilimlerdeki
+ * (ör. TRT +3) kullanıcılarda saatlerce yanlış sonuca yol açar. Bu yardımcı
+ * boşluğu "T" yapıp sonuna "Z" ekleyerek doğru ayrıştırmayı garanti eder.
+ * Geçersiz/boş girişte null döner.
+ */
+export function parseSqliteTimestamp(value: string | null | undefined): Date | null {
+  if (!value) return null;
+  const isoLike = value.includes('T') ? value : `${value.replace(' ', 'T')}Z`;
+  const date = new Date(isoLike);
+  return Number.isNaN(date.getTime()) ? null : date;
+}

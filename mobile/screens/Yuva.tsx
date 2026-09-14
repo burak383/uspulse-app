@@ -8,7 +8,6 @@ import {
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -21,6 +20,7 @@ import { api } from '../src/api/client';
 import { MoodResponse, NotificationsResponse, TodayQuestion, TouchesResponse } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 import { isoDateToDisplay } from '../src/utils/date';
+import { BottomTabBar } from '../src/components/BottomTabBar';
 
 const { colors, fonts } = theme;
 
@@ -104,7 +104,6 @@ function reunionCountdown(dateStr: string | null | undefined) {
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function HomeScreen({ navigation }: { navigation: NavProp }) {
-  const { width } = useWindowDimensions();
   const { user, partner, couple, hapticsEnabled } = useAuth();
 
   const [mood, setMood] = useState<MoodResponse | null>(null);
@@ -478,36 +477,8 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
         </View>
       </ScrollView>
 
-      <View style={[styles.tabBar, { width: Math.min(width - 30, 350) }]}>
-        <TabItem icon="home-variant-outline" label="Yuva" active onPress={() => goTab('Yuva')} />
-        <TabItem icon="calendar-month-outline" label="Planlar" onPress={() => goTab('Planlar')} />
-        <TabItem icon="image-multiple-outline" label="Anılar" onPress={() => goTab('Anilar')} />
-        <TabItem icon="account-group-outline" label="Biz" onPress={() => goTab('Biz')} />
-      </View>
+      <BottomTabBar active="Yuva" onNavigate={goTab} />
     </SafeAreaView>
-  );
-}
-
-function TabItem({
-  icon,
-  label,
-  active = false,
-  onPress,
-}: {
-  icon: IconName;
-  label: string;
-  active?: boolean;
-  onPress?: () => void;
-}) {
-  return (
-    <Pressable style={[styles.tabItem, active && styles.activeTabItem]} onPress={onPress}>
-      <Icon
-        name={icon}
-        size={21}
-        color={active ? colors.primary : colors.mutedForeground}
-      />
-      <Text style={[styles.tabLabel, active && styles.activeTabLabel]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -1041,40 +1012,5 @@ const styles = StyleSheet.create({
     bottom: -16,
     width: 175,
     height: 175,
-  },
-  tabBar: {
-    position: 'absolute',
-    bottom: 18,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderRadius: 32,
-    borderWidth: 1,
-    borderColor: alpha(colors.border, 0.75),
-    backgroundColor: alpha(colors.secondary, 0.94),
-  },
-  tabItem: {
-    minWidth: 68,
-    alignItems: 'center',
-    gap: 3,
-    paddingHorizontal: 11,
-    paddingVertical: 6,
-    borderRadius: 22,
-  },
-  activeTabItem: {
-    backgroundColor: alpha(colors.primary, 0.15),
-  },
-  tabLabel: {
-    color: colors.mutedForeground,
-    fontFamily: fonts.body,
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  activeTabLabel: {
-    color: colors.primary,
-    fontWeight: '900',
   },
 });

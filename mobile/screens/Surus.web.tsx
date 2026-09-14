@@ -8,31 +8,25 @@
 // etmek için kullanılıyor (bkz. Paywall/RevenueCat notları), bu yüzden
 // burada haritasız bir bilgilendirme yeterli.
 import React from 'react';
-import { SafeAreaView, StatusBar, StyleSheet, Text, View, Pressable } from 'react-native';
+import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';
-import { RootStackParamList } from '../navigation/types';
+import { RootStackParamList, TabRouteName } from '../navigation/types';
+import { BottomTabBar } from '../src/components/BottomTabBar';
 
 const colors = theme.colors;
 
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'Surus'>;
 
 export default function DrivingScreenWeb({ navigation }: { navigation: NavProp }) {
+  const goTab = (route: TabRouteName) => navigation.navigate(route);
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      {/* Durum çubuğu App.tsx'te genel olarak (expo-status-bar, style="light")
+          ayarlanıyor -- bkz. AvatarSecimi.tsx'teki aynı açıklama. */}
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Geri dön"
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={22} color={colors.foreground} />
-        </Pressable>
         <Text style={styles.title}>Sürüş</Text>
-        <View style={{ width: 40 }} />
       </View>
       <View style={styles.centered}>
         <MaterialCommunityIcons name="map-marker-off-outline" size={40} color={colors.mutedForeground} />
@@ -41,6 +35,7 @@ export default function DrivingScreenWeb({ navigation }: { navigation: NavProp }
           Sürüş takibi haritası yalnızca Android/iOS uygulamasında görüntülenebilir.
         </Text>
       </View>
+      <BottomTabBar active="Surus" onNavigate={goTab} />
     </SafeAreaView>
   );
 }
@@ -48,20 +43,10 @@ export default function DrivingScreenWeb({ navigation }: { navigation: NavProp }
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 12,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
   },
   title: { fontFamily: theme.fonts.heading, fontSize: 20, color: colors.foreground },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 10 },

@@ -4,8 +4,8 @@
 // rıza şartı), bu ekran salt görüntüleme amaçlı; açma/kapama anahtarı
 // Biz.tsx'teki "Gizliliğiniz sizin elinizde" kartında.
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
-import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import { ActivityIndicator, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import MapView, { Callout, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -13,7 +13,10 @@ import { theme } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api/client';
 import { MeResponse } from '../src/api/types';
-import { RootStackParamList } from '../navigation/types';
+import { RootStackParamList, TabRouteName } from '../navigation/types';
+import { BottomTabBar } from '../src/components/BottomTabBar';
+import { AvatarView } from '../src/components/AvatarView';
+import { parseSqliteTimestamp } from '../src/utils/date';
 
 const colors = theme.colors;
 
@@ -31,6 +34,24 @@ function batteryIconFor(level: number, charging: boolean | null): BatteryIconNam
   return level >= 95 ? 'battery' : (`battery-${rounded}` as BatteryIconName);
 }
 
+// Partnerin avatarına dokununca (bkz. aşağıdaki Callout) "3 saattir
+// buradasın" gibi göstermek için -- server/src/routes/me.ts PUT /location,
+// konum anlamlı ölçüde değişmediği sürece stationary_since'i sabit tutuyor.
+function formatStationaryDuration(value: string | null): string | null {
+  const since = parseSqliteTimestamp(value);
+  if (!since) return null;
+  const minutes = Math.max(0, Math.round((Date.now() - since.getTime()) / 60000));
+  if (minutes < 1) return 'Az önce buraya geldi';
+  if (minutes < 60) return `${minutes} dakikadır burada`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    const remMinutes = minutes % 60;
+    return remMinutes > 0 ? `${hours} saat ${remMinutes} dakikadır burada` : `${hours} saattir burada`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days} gündür burada`;
+}
+
 type NavProp = NativeStackNavigationProp<RootStackParamList, 'PartnerKonum'>;
 
 export default function PartnerLocationScreen({ navigation }: { navigation: NavProp }) {
@@ -39,6 +60,11 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<MapView>(null);
   const hasCentered = useRef(false);
+  // Artık Biz.tsx'teki bir menü satırından değil, diğer sekmeler (Yuva,
+  // Planlar, Anılar, Biz, Sürüş) gibi doğrudan alttaki sekme çubuğundan
+  // açılıyor -- bkz. navigation/RootNavigator.tsx ve
+  // src/components/BottomTabBar.tsx.
+  const goTab = (route: TabRouteName) => navigation.navigate(route);
 
   const load = useCallback(async () => {
     try {
@@ -83,24 +109,17 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
 
   const partnerName = partner?.name ?? 'Partnerin';
   const shared = me?.partnerLat != null && me?.partnerLng != null;
+  const stationaryText = formatStationaryDuration(me?.partnerStationarySince ?? null);
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      {/* Durum çubuğu App.tsx'te genel olarak (expo-status-bar, style="light")
+          ayarlanıyor -- bkz. AvatarSecimi.tsx'teki aynı açıklama. */}
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Geri dön"
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={22} color={colors.foreground} />
-        </Pressable>
         <View style={styles.headerCopy}>
           <Text style={styles.title}>Konum</Text>
           <Text style={styles.subtitle}>{partnerName}'in şu anki konumu</Text>
         </View>
-        <View style={{ width: 40 }} />
       </View>
 
       {loading ? (
@@ -122,8 +141,22 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
           >
             <Marker coordinate={{ latitude: me.partnerLat as number, longitude: me.partnerLng as number }} title={partnerName}>
               <View style={styles.markerDot}>
-                <MaterialCommunityIcons name="heart" size={16} color={colors.primaryForeground} />
+                <AvatarView
+                  avatarUrl={partner?.avatarUrl}
+                  size={26}
+                  fallbackIcon="account"
+                  fallbackColor={colors.primaryForeground}
+                />
               </View>
+              {/* Avatara dokununca harita bunu otomatik açar (react-native-maps'in
+                  varsayılan Marker/Callout davranışı) -- "ne kadar süredir
+                  burada" bilgisini göstermek için bkz. formatStationaryDuration. */}
+              <Callout tooltip>
+                <View style={styles.calloutCard}>
+                  <Text style={styles.calloutTitle}>{partnerName}</Text>
+                  {stationaryText && <Text style={styles.calloutText}>{stationaryText}</Text>}
+                </View>
+              </Callout>
             </Marker>
           </MapView>
 
@@ -155,6 +188,8 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
           </Text>
         </View>
       )}
+
+      <BottomTabBar active="PartnerKonum" onNavigate={goTab} />
     </SafeAreaView>
   );
 }
@@ -162,20 +197,10 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 12,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
   },
   headerCopy: { alignItems: 'center' },
   title: { fontFamily: theme.fonts.heading, fontSize: 20, color: colors.foreground },
@@ -204,7 +229,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: 24,
+    // Alttaki sekme çubuğunun (bkz. BottomTabBar) üstünde kalması için 24
+    // yerine 100 -- aksi halde bu kart çubuğun arkasında/üstünde çakışırdı.
+    bottom: 100,
     backgroundColor: colors.card,
     borderRadius: 18,
     padding: 14,
@@ -222,5 +249,25 @@ const styles = StyleSheet.create({
     width: 1,
     alignSelf: 'stretch',
     backgroundColor: colors.border,
+  },
+  calloutCard: {
+    minWidth: 150,
+    maxWidth: 220,
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
+  },
+  calloutTitle: { fontFamily: theme.fonts.heading, fontSize: 14, color: colors.foreground },
+  calloutText: {
+    fontFamily: theme.fonts.body,
+    fontSize: 12,
+    color: colors.mutedForeground,
+    marginTop: 2,
   },
 });

@@ -9,7 +9,7 @@
 // Biz.tsx'teki "Gizliliğiniz sizin elinizde" kartında (diğer tüm gizlilik
 // anahtarlarıyla aynı yerde) -- bu ekran salt görüntüleme amaçlı.
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, SafeAreaView, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -18,7 +18,8 @@ import { theme } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api/client';
 import { DrivingPoint, DrivingStatusResponse } from '../src/api/types';
-import { RootStackParamList } from '../navigation/types';
+import { RootStackParamList, TabRouteName } from '../navigation/types';
+import { BottomTabBar } from '../src/components/BottomTabBar';
 
 const colors = theme.colors;
 
@@ -35,6 +36,10 @@ export default function DrivingScreen({ navigation }: { navigation: NavProp }) {
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<MapView>(null);
   const lastPointCount = useRef(0);
+  // Artık Biz.tsx'teki bir menü satırından değil, diğer sekmeler gibi
+  // doğrudan alttaki sekme çubuğundan açılıyor -- bkz.
+  // navigation/RootNavigator.tsx ve src/components/BottomTabBar.tsx.
+  const goTab = (route: TabRouteName) => navigation.navigate(route);
 
   const load = useCallback(async () => {
     try {
@@ -81,21 +86,13 @@ export default function DrivingScreen({ navigation }: { navigation: NavProp }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      {/* Durum çubuğu App.tsx'te genel olarak (expo-status-bar, style="light")
+          ayarlanıyor -- bkz. AvatarSecimi.tsx'teki aynı açıklama. */}
       <View style={styles.header}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Geri dön"
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <MaterialCommunityIcons name="arrow-left" size={22} color={colors.foreground} />
-        </Pressable>
         <View style={styles.headerCopy}>
           <Text style={styles.title}>Sürüş</Text>
           <Text style={styles.subtitle}>{partnerName} şu an araçtaysa burada görürsün</Text>
         </View>
-        <View style={{ width: 40 }} />
       </View>
 
       {loading ? (
@@ -151,6 +148,8 @@ export default function DrivingScreen({ navigation }: { navigation: NavProp }) {
           </Text>
         </View>
       )}
+
+      <BottomTabBar active="Surus" onNavigate={goTab} />
     </SafeAreaView>
   );
 }
@@ -158,20 +157,10 @@ export default function DrivingScreen({ navigation }: { navigation: NavProp }) {
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
   header: {
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 12,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.card,
   },
   headerCopy: { alignItems: 'center' },
   title: { fontFamily: theme.fonts.heading, fontSize: 20, color: colors.foreground },
@@ -200,7 +189,9 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     right: 16,
-    bottom: 24,
+    // Alttaki sekme çubuğunun (bkz. BottomTabBar) üstünde kalması için 24
+    // yerine 100 -- bkz. PartnerKonum.tsx'teki aynı gerekçe.
+    bottom: 100,
     backgroundColor: colors.card,
     borderRadius: 18,
     padding: 14,

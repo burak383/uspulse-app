@@ -5,7 +5,6 @@ import {
   Pressable,
   SafeAreaView,
   ScrollView,
-  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -146,7 +145,8 @@ export default function DailyRitualScreen({ navigation }: { navigation: NavProp 
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+      {/* Durum çubuğu App.tsx'te genel olarak (expo-status-bar, style="light")
+          ayarlanıyor -- bkz. AvatarSecimi.tsx'teki aynı açıklama. */}
       <View style={styles.container}>
         <ScrollView
           contentContainerStyle={styles.scrollContent}

@@ -22,6 +22,7 @@ import { PlanItem, SavingsGoal } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 import { confirmAsync } from '../src/utils/confirm';
 import { parseFlexibleDateToISO, isoDateToDisplay } from '../src/utils/date';
+import { BottomTabBar } from '../src/components/BottomTabBar';
 
 const kasImage =
   'https://fwtngjyirchhhysukjxi.supabase.co/storage/v1/object/public/project-images/d8f99d97-2440-4f3a-addf-6eb2753287e6/cc97ef26-ea3b-42b7-89fc-3c5dbbec74d9.png';
@@ -650,12 +651,7 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
         <Icon name="plus" size={27} color={colors.primaryForeground} />
       </Pressable>
 
-      <View style={styles.tabBar}>
-        <Tab icon="home-outline" label="Yuva" onPress={() => goTab('Yuva')} />
-        <Tab icon="calendar-blank-outline" label="Planlar" active onPress={() => goTab('Planlar')} />
-        <Tab icon="image-multiple-outline" label="Anılar" onPress={() => goTab('Anilar')} />
-        <Tab icon="account-group-outline" label="Biz" onPress={() => goTab('Biz')} />
-      </View>
+      <BottomTabBar active="Planlar" onNavigate={goTab} />
 
       <Modal visible={addCategory !== null} transparent animationType="fade" onRequestClose={closeItemModal}>
         <View style={styles.modalBackdrop}>
@@ -850,27 +846,6 @@ export default function PlansScreen({ navigation }: { navigation: NavProp }) {
   );
 }
 
-function Tab({
-  icon,
-  label,
-  active = false,
-  onPress,
-}: {
-  icon: IconName;
-  label: string;
-  active?: boolean;
-  onPress?: () => void;
-}) {
-  return (
-    <Pressable style={[styles.tab, active && styles.activeTab]} onPress={onPress}>
-      <Icon name={icon} size={21} color={active ? colors.primary : colors.mutedForeground} />
-      <Text style={[styles.tabLabel, { color: active ? colors.primary : colors.mutedForeground }]}>
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.background },
   scrollContent: { paddingBottom: 145 },
@@ -996,10 +971,6 @@ const styles = StyleSheet.create({
   addGoalCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 54, borderRadius: 20, borderWidth: 1, borderStyle: 'dashed', borderColor: colors.accent, backgroundColor: 'transparent' },
   addGoalText: { color: colors.accent, fontFamily: fonts.body, fontSize: 13, fontWeight: '800' },
   floatingButton: { position: 'absolute', right: 20, bottom: 91, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.primary, alignItems: 'center', justifyContent: 'center' },
-  tabBar: { position: 'absolute', left: 20, right: 20, bottom: 20, height: 68, borderRadius: 36, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.card, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  tab: { minWidth: 68, paddingHorizontal: 10, paddingVertical: 8, borderRadius: 25, alignItems: 'center', gap: 3 },
-  activeTab: { backgroundColor: colors.primary },
-  tabLabel: { fontFamily: fonts.body, fontSize: 10, fontWeight: '800' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', padding: 24 },
   modalCard: { width: '100%', maxWidth: 360, padding: 20, borderRadius: 20, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, gap: 12 },
   modalTitle: { color: colors.foreground, fontFamily: fonts.heading, fontSize: 19 },

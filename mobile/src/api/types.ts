@@ -45,6 +45,8 @@ export interface MeResponse {
   partnerBatteryLevel: number | null;
   /** Partnerin telefonu şu an şarjda mı -- partnerBatteryLevel dolu geldiğinde anlamlı. */
   partnerBatteryCharging: boolean | null;
+  /** Partnerin şu anki konumunda ne zamandır olduğu (SQLite datetime('now') biçiminde, "Z" son eki olmadan UTC) -- konum paylaşımıyla aynı karşılıklılık şartına tabi. bkz. PartnerKonum ekranındaki avatar dokunma açıklaması. */
+  partnerStationarySince: string | null;
   /** Sürüş takibini (anlık hız + rota) partnere açtın mı -- bkz. DrivingContext. */
   drivingShareEnabled: boolean;
   entitlement: Entitlement | null;

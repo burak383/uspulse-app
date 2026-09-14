@@ -34,6 +34,7 @@ import { api, apiUpload, appendMediaFile } from '../src/api/client';
 import { Memory } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 import { confirmAsync, alertInfo } from '../src/utils/confirm';
+import { BottomTabBar } from '../src/components/BottomTabBar';
 
 const alpha = (color: string, opacity: number) => {
   const value = Math.round(opacity * 255)
@@ -642,12 +643,7 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
         </View>
       </ScrollView>
 
-      <View style={styles.tabBar}>
-        <Tab icon="home" label="Yuva" onPress={() => goTab('Yuva')} />
-        <Tab icon="calendar" label="Planlar" onPress={() => goTab('Planlar')} />
-        <Tab icon="image" label="Anılar" active onPress={() => goTab('Anilar')} />
-        <Tab icon="users" label="Biz" onPress={() => goTab('Biz')} />
-      </View>
+      <BottomTabBar active="Anilar" onNavigate={goTab} />
 
       <Modal visible={modalOpen} transparent animationType="fade" onRequestClose={closeModal}>
         <View style={styles.modalBackdrop}>
@@ -816,25 +812,6 @@ export default function MemoriesScreen({ navigation }: { navigation: NavProp }) 
         </View>
       </Modal>
     </SafeAreaView>
-  );
-}
-
-function Tab({
-  icon,
-  label,
-  active = false,
-  onPress,
-}: {
-  icon: IconProps['name'];
-  label: string;
-  active?: boolean;
-  onPress?: () => void;
-}) {
-  return (
-    <Pressable style={[styles.tab, active && styles.activeTab]} onPress={onPress}>
-      <Icon name={icon} size={21} color={active ? colors.primary : colors.mutedForeground} />
-      <Text style={[styles.tabLabel, active && styles.activeTabLabel]}>{label}</Text>
-    </Pressable>
   );
 }
 
@@ -1108,41 +1085,6 @@ const styles = StyleSheet.create({
     color: colors.foreground,
     fontFamily: fonts.heading,
     fontSize: 21,
-  },
-  tabBar: {
-    position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 20,
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    borderRadius: 32,
-    borderWidth: 1,
-    borderColor: alpha(colors.border, 0.7),
-    backgroundColor: alpha(colors.background, 0.94),
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  tab: {
-    minWidth: 68,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 24,
-    alignItems: 'center',
-    gap: 4,
-  },
-  activeTab: {
-    backgroundColor: alpha(colors.primary, 0.15),
-  },
-  tabLabel: {
-    color: colors.mutedForeground,
-    fontFamily: fonts.body,
-    fontSize: 10,
-    fontWeight: '600',
-  },
-  activeTabLabel: {
-    color: colors.primary,
-    fontWeight: '800',
   },
   itemActions: {
     flexDirection: 'row',
