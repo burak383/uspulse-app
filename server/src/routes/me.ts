@@ -3,6 +3,7 @@ import db from '../db';
 import { requireAuth } from '../middleware/auth';
 import { getEntitlement } from '../middleware/subscription';
 import { deleteUploadedMediaByUrl } from '../uploads';
+import { notifyCoupleMilestone } from '../notify';
 
 const router = Router();
 
@@ -30,6 +31,53 @@ function distanceKm(lat1: number, lng1: number, lat2: number, lng2: number): num
   return R * c;
 }
 
+// Bkz. mobile/screens/Biz.tsx daysSince (ve src/utils/date.ts
+// parseSqliteTimestamp) -- birlikte olma süresi, çiftin eşleştiği an
+// (couples.created_at) ile şimdi arasındaki TAM gün sayısı. Sunucu
+// tarafında da AYNI hesaplamayı kullanıyoruz ki aşağıdaki "100. gününüz"
+// bildirimi, Biz ekranında görünen sayıyla birebir tutarlı olsun.
+function daysSinceCoupleStart(createdAt: string): number {
+  const isoLike = createdAt.includes('T') ? createdAt : `${createdAt.replace(' ', 'T')}Z`;
+  const start = new Date(isoLike);
+  if (Number.isNaN(start.getTime())) return 0;
+  return Math.max(0, Math.floor((Date.now() - start.getTime()) / 86400000));
+}
+
+// Kutlanacak "kilometre taşı" günleri: birkaç özel eşik + sonrasında her
+// tam yıl dönümü. Listeye yeni bir özel gün eklemek tek satırlık bir iş.
+function milestoneLabelFor(days: number): string | null {
+  if (days === 7) return '1 haftanız doldu';
+  if (days === 30) return '1 ayınız doldu';
+  if (days === 100) return '100. gününüz';
+  if (days === 500) return '500. gününüz';
+  if (days === 1000) return '1000. gününüz';
+  if (days > 0 && days % 365 === 0) {
+    const years = days / 365;
+    return years === 1 ? '1. yıl dönümünüz' : `${years}. yıl dönümünüz`;
+  }
+  return null;
+}
+
+// GET /me neredeyse her ekran açılışında/odaklanmasında çağrıldığı için bu
+// kontrol pratikte "uygulama her açıldığında" çalışır -- ayrı bir
+// zamanlanmış görev (cron) KURULMADI çünkü Render'ın ücretsiz planındaki
+// servis kullanılmadığında uyur; bir cron'un uyanık bir dyno beklemesi
+// yerine, zaten olan bir istekle (GET /me) "bugün tam o güne denk geldik
+// mi?" diye bakmak daha güvenilir. Uygulama o gün hiç açılmazsa o günün
+// kutlaması hiç gönderilmez (geriye dönük telafi YOK) -- ama
+// last_milestone_check_days bugüne güncellendiği için ertesi gün tekrar
+// gecikmeli bir bildirim de gitmez.
+function checkAnniversaryMilestone(couple: any) {
+  if (!couple?.created_at) return;
+  const days = daysSinceCoupleStart(couple.created_at);
+  if (days === (couple.last_milestone_check_days ?? 0)) return;
+  db.prepare('UPDATE couples SET last_milestone_check_days = ? WHERE id = ?').run(days, couple.id);
+  const label = milestoneLabelFor(days);
+  if (label) {
+    notifyCoupleMilestone(couple.id, `${label}! 🎉`, "Aşkınızı kutlamak için UsPulse'u açın.");
+  }
+}
+
 router.get('/', requireAuth, (req, res) => {
   const me = req.user!;
   const row: any = db.prepare('SELECT * FROM users WHERE id = ?').get(me.id);
@@ -40,6 +88,7 @@ router.get('/', requireAuth, (req, res) => {
     partner = db
       .prepare('SELECT * FROM users WHERE couple_id = ? AND id != ?')
       .get(me.coupleId, me.id);
+    checkAnniversaryMilestone(couple);
   }
 
   // Konum paylaşımı KARŞILIKLI: ikisi de açtığında hem mesafe hem de

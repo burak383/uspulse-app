@@ -22,7 +22,10 @@ export type NotificationType =
   | 'savings_contribution'
   | 'savings_withdrawal'
   | 'question_answer'
-  | 'reunion_update';
+  | 'reunion_update'
+  | 'message'
+  | 'milestone'
+  | 'love_language';
 
 interface NotifyPartnerInput {
   coupleId: string;
@@ -59,5 +62,41 @@ export function notifyPartner({ coupleId, actorId, type, title, body, data }: No
         }
       },
     ).catch(() => {});
+  }
+}
+
+// notifyPartner'dan farklı olarak burada tek bir "yapan" taraf yok -- bir
+// yıldönümü/kilometre taşı (bkz. routes/me.ts checkAnniversaryMilestone)
+// İKİ tarafı da aynı anda kutlar. Her iki kullanıcı da hem uygulama içi
+// bildirim kaydı hem de (varsa) push bildirimi alır; her birinin "actorName"
+// olarak DİĞERİ görünür (ör. partnerin ekranında "Ayşe: 100. gününüz! 🎉"),
+// tamamen kozmetik bir seçim -- gerçek bir "gönderen" olmadığı için en
+// doğal okunan sonuç bu.
+export function notifyCoupleMilestone(coupleId: string, title: string, body: string): void {
+  const users = db.prepare('SELECT id, push_token FROM users WHERE couple_id = ?').all(coupleId) as {
+    id: string;
+    push_token: string | null;
+  }[];
+  if (users.length < 2) return;
+
+  for (const recipient of users) {
+    const other = users.find((u) => u.id !== recipient.id)!;
+    db.prepare(
+      `INSERT INTO notifications (id, couple_id, recipient_id, actor_id, type, title, body)
+       VALUES (?, ?, ?, ?, 'milestone', ?, ?)`,
+    ).run(newId(), coupleId, recipient.id, other.id, title, body);
+
+    if (recipient.push_token) {
+      sendPushNotification(recipient.push_token, { title, body, data: { type: 'milestone' } })
+        .then(({ shouldClearToken }) => {
+          if (shouldClearToken) {
+            db.prepare('UPDATE users SET push_token = NULL WHERE id = ? AND push_token = ?').run(
+              recipient.id,
+              recipient.push_token,
+            );
+          }
+        })
+        .catch(() => {});
+    }
   }
 }

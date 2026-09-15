@@ -144,6 +144,36 @@ CREATE TABLE IF NOT EXISTS driving_trips (
   speed_kmh REAL NOT NULL DEFAULT 0,
   points TEXT NOT NULL
 );
+
+-- Çiftler arası doğrudan mesajlaşma (metin + sesli not). Anılar'dan farklı
+-- olarak burada "kalıcı arşiv" değil, sıradan bir sohbet akışı hedefleniyor
+-- -- bu yüzden zaman kapsülü/kilit gibi bir kavram yok. Sesli mesajlar
+-- memories ile aynı UPLOADS_DIR/uploadMemoryMedia altyapısını kullanır (bkz.
+-- routes/messages.ts) -- ayrı bir depolama mekanizması gerekmiyor.
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY,
+  couple_id TEXT NOT NULL REFERENCES couples(id),
+  sender_id TEXT NOT NULL REFERENCES users(id),
+  type TEXT NOT NULL CHECK(type IN ('text','audio')),
+  text TEXT,
+  media_url TEXT,
+  duration_ms INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  read_at TEXT
+);
+
+-- "Aşk dili" uyum testi sonucu: kullanıcı başına TEK satır (yeniden çözünce
+-- üzerine yazılır -- bkz. routes/loveLanguage.ts INSERT ... ON CONFLICT).
+-- Soru/seçenek METİNLERİ hiç sunucuya gelmiyor, sadece 5 kategorinin
+-- puanları ve hesaplanan baskın kategori (bkz. mobile/src/quiz/askDili.ts
+-- dosya başındaki açıklama -- anlam tamamen istemci tarafında yaşıyor).
+CREATE TABLE IF NOT EXISTS love_language_results (
+  user_id TEXT PRIMARY KEY REFERENCES users(id),
+  couple_id TEXT NOT NULL REFERENCES couples(id),
+  scores TEXT NOT NULL,
+  top_language TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 `);
 
 // Lightweight migration for databases created before Google sign-in /
@@ -211,6 +241,12 @@ ensureColumn('couples', 'subscription_active', 'subscription_active INTEGER NOT 
 ensureColumn('couples', 'subscription_expires_at', 'subscription_expires_at TEXT');
 ensureColumn('couples', 'subscription_product_id', 'subscription_product_id TEXT');
 ensureColumn('couples', 'subscription_platform', 'subscription_platform TEXT');
+// Otomatik yıldönümü/kilometre taşı bildirimleri (bkz. routes/me.ts
+// checkAnniversaryMilestone) için: en son kontrol edilen/bildirilen gün
+// sayısı. GET /me her açılışta/ekran değişiminde defalarca çağrıldığından,
+// bu sütun olmadan aynı gün içinde aynı kilometre taşı (ör. "100. gününüz")
+// için tekrar tekrar bildirim gönderilirdi.
+ensureColumn('couples', 'last_milestone_check_days', 'last_milestone_check_days INTEGER NOT NULL DEFAULT 0');
 // Şifre sıfırlandığında artırılır ve JWT payload'ına gömülür (bkz.
 // middleware/auth.ts) -- böylece parola sıfırlamadan ÖNCE verilmiş eski
 // token'lar (30 gün geçerli) parola sıfırlandığı anda hemen geçersiz olur,
@@ -238,6 +274,11 @@ db.exec('CREATE INDEX IF NOT EXISTS idx_touches_couple ON touches(couple_id);');
 db.exec('CREATE INDEX IF NOT EXISTS idx_moods_user ON moods(user_id);');
 db.exec('CREATE INDEX IF NOT EXISTS idx_users_couple ON users(couple_id);');
 db.exec('CREATE INDEX IF NOT EXISTS idx_driving_trips_couple ON driving_trips(couple_id);');
+// Sohbet geçmişi her zaman couple_id + created_at ile sorgulanıyor (bkz.
+// routes/messages.ts GET / ve sayfalama) -- bu indeks olmadan mesaj sayısı
+// arttıkça her sayfalama isteği tam tablo taraması gerektirirdi.
+db.exec('CREATE INDEX IF NOT EXISTS idx_messages_couple_created ON messages(couple_id, created_at);');
+db.exec('CREATE INDEX IF NOT EXISTS idx_love_language_couple ON love_language_results(couple_id);');
 
 const questionCount = (db.prepare('SELECT COUNT(*) as c FROM questions_bank').get() as { c: number }).c;
 if (questionCount === 0) {
