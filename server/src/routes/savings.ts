@@ -47,10 +47,23 @@ router.get('/', (req, res) => {
 // bildirimi tetikliyor, limitsiz olması bildirim spam'ine açık kapı bırakırdı.
 router.post('/', rateLimitPerUser('savings-goal', 10, 60 * 1000), (req, res) => {
   const { title, targetAmount, note } = req.body ?? {};
-  if (!title || !targetAmount || !Number.isFinite(Number(targetAmount)) || Number(targetAmount) <= 0) {
+  // title/note'un gerçekten string olduğunu doğruluyoruz (bkz. reunion.ts'teki
+  // aynı desen) -- aksi halde ör. title:true/[]/{} gibi bir gövde, aşağıdaki
+  // uzunluk kontrollerini geçip INSERT'e string olmayan bir değer bağlanmaya
+  // çalışır ve better-sqlite3 senkron fırlatır.
+  if (
+    typeof title !== 'string' ||
+    !title ||
+    !targetAmount ||
+    !Number.isFinite(Number(targetAmount)) ||
+    Number(targetAmount) <= 0
+  ) {
     return res.status(400).json({ error: 'title ve geçerli bir targetAmount gerekli.' });
   }
-  if (String(title).length > MAX_TITLE_LENGTH || (note && String(note).length > MAX_NOTE_LENGTH)) {
+  if (note !== undefined && note !== null && typeof note !== 'string') {
+    return res.status(400).json({ error: 'not bir metin olmalı.' });
+  }
+  if (title.length > MAX_TITLE_LENGTH || (note && note.length > MAX_NOTE_LENGTH)) {
     return res
       .status(400)
       .json({ error: `title en fazla ${MAX_TITLE_LENGTH}, not en fazla ${MAX_NOTE_LENGTH} karakter olabilir.` });
@@ -82,7 +95,12 @@ router.post('/:id/contribute', rateLimitPerUser('savings-contribute', 20, 60 * 1
   if (!amount || !Number.isFinite(Number(amount)) || Number(amount) <= 0) {
     return res.status(400).json({ error: 'Geçerli bir tutar gerekli.' });
   }
-  if (note && String(note).length > MAX_NOTE_LENGTH) {
+  // bkz. yukarıdaki POST /'daki aynı gerekçe -- note string değilse INSERT'e
+  // string olmayan bir değer bağlanmaya çalışılıp senkron fırlatır.
+  if (note !== undefined && note !== null && typeof note !== 'string') {
+    return res.status(400).json({ error: 'not bir metin olmalı.' });
+  }
+  if (note && note.length > MAX_NOTE_LENGTH) {
     return res.status(400).json({ error: `not en fazla ${MAX_NOTE_LENGTH} karakter olabilir.` });
   }
   const goal: any = db

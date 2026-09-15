@@ -36,10 +36,17 @@ router.get('/', (req, res) => {
 
 router.post('/', rateLimitPerUser('plans', 30, 60 * 1000), (req, res) => {
   const { category, title, subtitle } = req.body ?? {};
-  if (!category || !CATEGORIES.includes(category) || !title) {
+  // title/subtitle'ın gerçekten string olduğunu doğruluyoruz (bkz.
+  // reunion.ts'teki aynı desen) -- aksi halde ör. title:true/[]/{} gibi bir
+  // gövde, String(title) uzunluk kontrolünü geçip aşağıdaki INSERT'e string
+  // olmayan bir değer bağlanmaya çalışır ve better-sqlite3 senkron fırlatır.
+  if (!category || !CATEGORIES.includes(category) || typeof title !== 'string' || !title) {
     return res.status(400).json({ error: `category (${CATEGORIES.join('/')}) ve title gerekli.` });
   }
-  if (String(title).length > MAX_TITLE_LENGTH || (subtitle && String(subtitle).length > MAX_SUBTITLE_LENGTH)) {
+  if (subtitle !== undefined && subtitle !== null && typeof subtitle !== 'string') {
+    return res.status(400).json({ error: 'subtitle bir metin olmalı.' });
+  }
+  if (title.length > MAX_TITLE_LENGTH || (subtitle && subtitle.length > MAX_SUBTITLE_LENGTH)) {
     return res.status(400).json({ error: `title en fazla ${MAX_TITLE_LENGTH}, subtitle en fazla ${MAX_SUBTITLE_LENGTH} karakter olabilir.` });
   }
   const id = newId();

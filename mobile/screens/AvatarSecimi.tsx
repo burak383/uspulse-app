@@ -39,7 +39,7 @@ const CATEGORY_LABELS: Record<AvatarCategory, string> = {
 };
 
 export default function AvatarSelectionScreen({ navigation }: { navigation: NavProp }) {
-  const { user, refresh, logout } = useAuth();
+  const { user, refresh, logout, requestTabRedirect } = useAuth();
   const [busy, setBusy] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const canGoBack = navigation.canGoBack();
@@ -108,17 +108,32 @@ export default function AvatarSelectionScreen({ navigation }: { navigation: NavP
 
   // "Tamamlandı": seçim zaten sunucuya kaydedilmişti (yukarıdaki
   // choosePreset/pickFromDevice) -- burada sadece AuthContext'i tazeleyip
-  // (RootNavigator'ın needsAvatar koşulunu güncelleyip) doğrudan Biz
-  // sekmesine yönlendiriyoruz.
+  // Biz sekmesine yönlendiriyoruz.
+  //
+  // Düzenleme modunda (canGoBack true -- kullanıcının zaten bir avatarı
+  // vardı, needsAvatar zaten false, refresh() bu ekranın kayıtlı kalıp
+  // kalmayacağını etkilemiyor) doğrudan navigate() güvenli.
+  //
+  // İlk kurulum akışında (canGoBack false) ise refresh(), user.avatarUrl'i
+  // doldurup RootNavigator'daki needsAvatar'ı false yapar -- bu da
+  // Stack.Navigator'ın ekran listesini TEK ekranlı ("AvatarSecimi") halden
+  // tam listeye (ilk ekranı Yuva) değiştirir ve bu ekran hemen unmount
+  // olur. Bu noktada navigation.navigate('Biz') çağırmak, React'in bu
+  // koşul değişikliğini işleyip Yuva'yı monte etmesiyle yarışır -- 'Biz'
+  // henüz kayıtlı ekran listesinde olmayabilir ve navigate sessizce hiçbir
+  // şey yapmaz (bkz. AuthContext.tsx pendingTabRedirect açıklaması).
+  // Bunun yerine hedefi orada bırakıp Yuva'nın (kesin olarak monte olacak
+  // ilk ekran) kendisinin yönlendirmesini istiyoruz.
   const handleFinish = async () => {
     if (busy || !previewValue) return;
+    if (!canGoBack) requestTabRedirect('Biz');
     setBusy(true);
     try {
       await refresh();
     } finally {
       setBusy(false);
     }
-    navigation.navigate('Biz');
+    if (canGoBack) navigation.navigate('Biz');
   };
 
   const handleLogout = () => {

@@ -98,3 +98,47 @@ export async function syncWidgetSnapshot(me: MeResponse): Promise<void> {
     }
   }
 }
+
+// Çıkış yapıldığında ya da hesap silindiğinde (bkz. AuthContext.tsx
+// logout/deleteAccount) çağrılır. Aksi halde -- aynı cihazda farklı bir
+// hesapla giriş yapılana kadar (ya da hiç yeniden giriş yapılmazsa) --
+// widget, ÖNCEKİ kullanıcının/çiftin "birlikte X gündür", partner adı ve
+// mesafe bilgisini göstermeye devam eder. Paylaşımlı/aile cihazlarında bu
+// gerçek bir gizlilik sızıntısı: widget'ı hemen boş/placeholder duruma
+// döndürüyoruz.
+export async function clearWidgetSnapshot(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(WIDGET_SNAPSHOT_KEY);
+  } catch {
+    // sessizce geç
+  }
+
+  const emptySnapshot: WidgetSnapshot = {
+    daysTogether: null,
+    partnerName: null,
+    distanceKm: null,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (Platform.OS === 'android') {
+    try {
+      await requestWidgetUpdate({
+        widgetName: ANDROID_WIDGET_NAME,
+        renderWidget: () => renderUsPulseWidget(emptySnapshot),
+      });
+    } catch {
+      // sessizce geç.
+    }
+  } else if (Platform.OS === 'ios') {
+    try {
+      const storage = new ExtensionStorage(IOS_APP_GROUP);
+      storage.set('daysTogether', -1);
+      storage.set('partnerName', '');
+      storage.set('distanceKm', -1);
+      storage.set('updatedAt', emptySnapshot.updatedAt);
+      ExtensionStorage.reloadWidget();
+    } catch {
+      // sessizce geç.
+    }
+  }
+}

@@ -19,7 +19,8 @@ import {
 import { readBatteryInfo } from '../location/batteryInfo';
 import { configureRevenueCat, loginRevenueCatCouple, logoutRevenueCat } from '../subscriptions/purchases';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
-import { syncWidgetSnapshot } from '../widgets/snapshot';
+import { clearWidgetSnapshot, syncWidgetSnapshot } from '../widgets/snapshot';
+import type { TabRouteName } from '../../navigation/types';
 
 const TOKEN_KEY = 'uspulse_token';
 // Biyometrik (Face ID/parmak izi) giriş özelliği kaldırıldı -- bu iki anahtar
@@ -109,6 +110,19 @@ interface AuthContextValue {
   // Abonelik/deneme durumu -- bkz. server/src/middleware/subscription.ts.
   // Eşleşmemiş kullanıcılar için null.
   entitlement: Entitlement | null;
+  // AvatarSecimi.tsx'teki "Tamamlandı" butonu gibi yerler, refresh() çağırıp
+  // RootNavigator'ın koşulunu (needsAvatar vb.) değiştirdikten HEMEN sonra
+  // navigation.navigate() çağırırsa, o an aktif olan Stack.Navigator'ın
+  // ekran listesi henüz yeni koşula göre güncellenmemiş olabilir (React'ın
+  // re-render'ı ile bu fonksiyonun devam etmesi arasında bir yarış durumu) --
+  // hedef ekran henüz kayıtlı olmayabilir ve navigate sessizce hiçbir şey
+  // yapmaz. Bunun yerine hedefi burada saklıyoruz; RootNavigator'ın yeni
+  // ekran listesiyle KESİN olarak monte ettiği ilk ekran (bkz. Yuva.tsx)
+  // mount olduğunda bunu okuyup kendisi yönlendiriyor -- bu şekilde
+  // `navigation` her zaman güncel/geçerli bir ekrana ait oluyor.
+  pendingTabRedirect: TabRouteName | null;
+  requestTabRedirect: (route: TabRouteName) => void;
+  clearPendingTabRedirect: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -128,6 +142,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [drivingSubmitting, setDrivingSubmitting] = useState(false);
   const [hapticsEnabled, setHapticsEnabledState] = useState(true);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
+  const [pendingTabRedirect, setPendingTabRedirect] = useState<TabRouteName | null>(null);
+  const requestTabRedirect = useCallback((route: TabRouteName) => setPendingTabRedirect(route), []);
+  const clearPendingTabRedirect = useCallback(() => setPendingTabRedirect(null), []);
 
   // RevenueCat SDK'sını bir kez, uygulama açılışında yapılandırır. API
   // anahtarı henüz girilmediyse (bkz. src/subscriptions/purchases.ts)
@@ -773,6 +790,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // de temizle (eski bir sürümde etkinleştirmiş olabilecek kullanıcılar için).
     await deleteSecureItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
     await AsyncStorage.removeItem(BIOMETRIC_FLAG_KEY).catch(() => {});
+    // Ana ekran widget'ı da temizlenmeli -- aksi halde aynı (paylaşımlı/aile)
+    // cihazda yeniden giriş yapılana kadar widget bu hesabın "birlikte X
+    // gündür"/partner adı/mesafe bilgisini göstermeye devam eder (bkz.
+    // src/widgets/snapshot.ts clearWidgetSnapshot).
+    await clearWidgetSnapshot().catch(() => {});
   }, []);
 
   const deleteAccount = useCallback(async () => {
@@ -797,6 +819,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await deleteSecureItemAsync(TOKEN_KEY).catch(() => {});
     await deleteSecureItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
     await AsyncStorage.removeItem(BIOMETRIC_FLAG_KEY).catch(() => {});
+    // bkz. logout()'taki aynı gerekçe -- hesap silindiğinde de widget'ın eski
+    // veriyi göstermeye devam etmesini istemiyoruz.
+    await clearWidgetSnapshot().catch(() => {});
     setAuthToken(null);
     setUser(null);
     setPartner(null);
@@ -846,6 +871,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       hapticsEnabled,
       setHapticsEnabled,
       entitlement,
+      pendingTabRedirect,
+      requestTabRedirect,
+      clearPendingTabRedirect,
     }),
     [
       status,
@@ -882,6 +910,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       hapticsEnabled,
       setHapticsEnabled,
       entitlement,
+      pendingTabRedirect,
+      requestTabRedirect,
+      clearPendingTabRedirect,
     ],
   );
 

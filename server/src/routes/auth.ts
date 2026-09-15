@@ -86,7 +86,12 @@ function publicUser(row: any) {
 
 router.post('/register', (req, res) => {
   const { name, email, password } = req.body ?? {};
-  if (!name || !email || !password) {
+  // typeof kontrolü olmadan (ör. name: true/[]/{} gibi bir istek gövdesi)
+  // aşağıdaki INSERT'e string olmayan bir değer bağlanmaya çalışılırsa
+  // better-sqlite3 senkron olarak fırlatır ve bu public/kimliksiz endpoint
+  // 500 döner -- name/email/password'ün gerçekten string olduğunu burada
+  // doğruluyoruz.
+  if (typeof name !== 'string' || typeof email !== 'string' || typeof password !== 'string' || !name.trim() || !email.trim() || !password) {
     return res.status(400).json({ error: 'İsim, e-posta ve şifre gerekli.' });
   }
   if (String(password).length < 6) {
@@ -108,7 +113,7 @@ router.post('/register', (req, res) => {
 
   db.prepare(
     `INSERT INTO users (id, name, email, password_hash, invite_code) VALUES (?, ?, ?, ?, ?)`,
-  ).run(id, name, String(email).toLowerCase(), passwordHash, inviteCode);
+  ).run(id, name.trim(), String(email).toLowerCase(), passwordHash, inviteCode);
 
   const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
   const token = signToken(id);
@@ -245,6 +250,13 @@ router.post('/google', async (req, res) => {
   if (!idToken) {
     return res.status(400).json({ error: 'idToken gerekli.' });
   }
+  // Diğer kimliksiz uçlarla (forgot-password/reset-password/reconnect,
+  // yukarıdaki aynı gerekçe) tutarlı: bu olmadan sınırsız istek Google'ın
+  // tokeninfo uç noktasını sunucumuzun IP'sinden zorlayabilir.
+  const ip = req.ip || 'unknown';
+  if (!checkRateLimit(`google-auth:${ip}`, 20, 15 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Çok fazla deneme. Lütfen bir süre sonra tekrar dene.' });
+  }
 
   let payload: any;
   try {
@@ -310,6 +322,12 @@ router.post('/apple', async (req, res) => {
   const { identityToken, fullName } = req.body ?? {};
   if (!identityToken) {
     return res.status(400).json({ error: 'identityToken gerekli.' });
+  }
+  // bkz. /google'daki aynı gerekçe -- Apple'ın JWKS doğrulamasını sunucumuzun
+  // IP'sinden sınırsız zorlamayı önlemek için.
+  const ip = req.ip || 'unknown';
+  if (!checkRateLimit(`apple-auth:${ip}`, 20, 15 * 60 * 1000)) {
+    return res.status(429).json({ error: 'Çok fazla deneme. Lütfen bir süre sonra tekrar dene.' });
   }
 
   let payload: any;

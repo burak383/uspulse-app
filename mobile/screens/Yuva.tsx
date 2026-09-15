@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -106,7 +106,18 @@ function reunionCountdown(dateStr: string | null | undefined) {
 type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function HomeScreen({ navigation }: { navigation: NavProp }) {
-  const { user, partner, couple, hapticsEnabled } = useAuth();
+  const { user, partner, couple, hapticsEnabled, pendingTabRedirect, clearPendingTabRedirect } = useAuth();
+
+  // bkz. AuthContext.tsx pendingTabRedirect açıklaması ve AvatarSecimi.tsx
+  // handleFinish -- ilk kurulumda avatar seçimi tamamlandığında RootNavigator
+  // kesin olarak BURAYA (Yuva) iner; eğer bir yönlendirme bekleniyorsa
+  // (ör. Biz sekmesi) hemen devralıp oraya geçiyoruz.
+  useEffect(() => {
+    if (pendingTabRedirect) {
+      clearPendingTabRedirect();
+      navigation.navigate(pendingTabRedirect);
+    }
+  }, [pendingTabRedirect, clearPendingTabRedirect, navigation]);
 
   const [mood, setMood] = useState<MoodResponse | null>(null);
   const [touches, setTouches] = useState<TouchesResponse | null>(null);

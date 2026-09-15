@@ -310,6 +310,17 @@ const deleteMyData = db.transaction((userId: string) => {
   db.prepare('DELETE FROM answers WHERE user_id = ?').run(userId);
   db.prepare('DELETE FROM savings_contributions WHERE user_id = ?').run(userId);
   db.prepare('DELETE FROM plan_items WHERE added_by = ?').run(userId);
+  // messages.sender_id, love_language_results.user_id ve driving_trips.user_id
+  // da users'a FOREIGN KEY ile bağlı (foreign_keys=ON) -- bunlar silinmeden
+  // users satırı silinirse FK ihlali oluşur (aşağıdaki notifications DELETE'iyle
+  // aynı sebep). Sesli mesajlar için de anılardaki gibi diskteki dosya temizleniyor.
+  const myMessages = db
+    .prepare('SELECT media_url FROM messages WHERE sender_id = ?')
+    .all(userId) as { media_url: string | null }[];
+  for (const m of myMessages) deleteUploadedMediaByUrl(m.media_url);
+  db.prepare('DELETE FROM messages WHERE sender_id = ?').run(userId);
+  db.prepare('DELETE FROM love_language_results WHERE user_id = ?').run(userId);
+  db.prepare('DELETE FROM driving_trips WHERE user_id = ?').run(userId);
   // Bildirimler tablosu recipient_id/actor_id ile users'a FOREIGN KEY ile
   // bağlı -- bunlar silinmeden users satırı silinirse FK ihlali oluşur.
   db.prepare('DELETE FROM notifications WHERE recipient_id = ? OR actor_id = ?').run(userId, userId);

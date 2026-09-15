@@ -2,6 +2,7 @@ import { Router } from 'express';
 import db from '../db';
 import { requireAuth, requireCouple } from '../middleware/auth';
 import { requireEntitlement } from '../middleware/subscription';
+import { rateLimitPerUser } from '../middleware/rateLimit';
 import { describeWeatherCode, getWeatherSnapshot } from '../weather';
 
 const router = Router();
@@ -12,7 +13,14 @@ router.use(requireAuth, requireCouple, requireEntitlement);
 // göstermek, önce partnerin KONUMUNU görebiliyor olmayı gerektiriyor --
 // ayrı bir izin anahtarı eklemek yerine mevcut karşılıklı konum onayına
 // bindirildi (Konum sekmesindeki aynı ekranda gösterildiği için doğal).
-router.get('/partner', async (req, res) => {
+// Diğer /me-benzeri uçlarla tutarlı olsun diye (bkz. middleware/rateLimit.ts):
+// sunucu içi 10 dakikalık önbellek (bkz. weather.ts) koordinat başına
+// gerçek dış istekleri zaten sınırlıyor ama bu sadece istemcinin normal
+// 10 dakikalık polling'ine (PartnerKonum.tsx WEATHER_POLL_MS) güveniyordu --
+// biri bu uca doğrudan sık sık istek atarsa (ör. hafifçe değişen konumla
+// önbellek anahtarını her seferinde kaçırarak) Open-Meteo'ya karşı
+// sınırsız istek atılabilirdi.
+router.get('/partner', rateLimitPerUser('weather', 30, 60 * 1000), async (req, res) => {
   const me = req.user!;
   const meRow: any = db.prepare('SELECT lat, lng FROM users WHERE id = ?').get(me.id);
   const partner: any = db
