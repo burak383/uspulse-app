@@ -219,3 +219,21 @@ export interface LoveLanguageResponse {
   me: LoveLanguageResult | null;
   partner: LoveLanguageResult | null;
 }
+
+/**
+ * Partnerin bulunduğu yerin anlık hava durumu -- konum paylaşımıyla aynı
+ * karşılıklılık şartına tabi (bkz. server/src/routes/weather.ts). "icon"
+ * bir MaterialCommunityIcons ikon adı (gün/gece durumuna göre değişir).
+ */
+export type WeatherResponse =
+  | { shared: false }
+  | { shared: true; available: false }
+  | {
+      shared: true;
+      available: true;
+      tempC: number;
+      description: string;
+      icon: string;
+      isDay: boolean;
+      at: string;
+    };

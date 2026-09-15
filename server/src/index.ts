@@ -16,6 +16,7 @@ import notificationsRouter from './routes/notifications';
 import drivingRouter from './routes/driving';
 import messagesRouter from './routes/messages';
 import loveLanguageRouter from './routes/loveLanguage';
+import weatherRouter from './routes/weather';
 import webhooksRouter from './routes/webhooks';
 import { UPLOADS_DIR } from './uploads';
 
@@ -86,6 +87,7 @@ app.use('/api/notifications', notificationsRouter);
 app.use('/api/driving', drivingRouter);
 app.use('/api/messages', messagesRouter);
 app.use('/api/love-language', loveLanguageRouter);
+app.use('/api/weather', weatherRouter);
 // RevenueCat'ten gelen sunucu-sunucu webhook çağrısı -- JWT ile korunmuyor
 // (mobil uygulamadan gelmiyor), kendi paylaşılan-sır (Bearer) doğrulamasını
 // kendi içinde yapıyor. bkz. routes/webhooks.ts.

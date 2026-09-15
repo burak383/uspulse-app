@@ -15,7 +15,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api/client';
-import { MeResponse } from '../src/api/types';
+import { MeResponse, WeatherResponse } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 import { BottomTabBar } from '../src/components/BottomTabBar';
 import { AvatarView } from '../src/components/AvatarView';
@@ -26,6 +26,10 @@ const colors = theme.colors;
 // Sürüş ekranıyla aynı ritimde (bkz. Surus.tsx) -- ekran görünürken 5
 // saniyede bir tazeleniyor, ekrandan çıkınca durur.
 const POLL_MS = 5000;
+// Hava durumu, konum kadar sık değişmez -- ayrı ve çok daha seyrek bir
+// döngüyle çekiliyor (sunucu tarafında da ayrıca önbelleğe alınıyor, bkz.
+// server/src/weather.ts) ki gereksiz yere dış API'ye istek atılmasın.
+const WEATHER_POLL_MS = 10 * 60 * 1000;
 
 // MaterialCommunityIcons'ta sadece 10'un katları için ayrı bir "dolgu"
 // ikonu var (battery-10, battery-20, ... battery-90) + tam dolu için
@@ -60,6 +64,7 @@ type NavProp = NativeStackNavigationProp<RootStackParamList, 'PartnerKonum'>;
 export default function PartnerLocationScreen({ navigation }: { navigation: NavProp }) {
   const { partner } = useAuth();
   const [me, setMe] = useState<MeResponse | null>(null);
+  const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<MapView>(null);
   const hasCentered = useRef(false);
@@ -108,6 +113,30 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
         clearInterval(interval);
       };
     }, [load]),
+  );
+
+  const loadWeather = useCallback(async () => {
+    try {
+      const res = await api.get<WeatherResponse>('/weather/partner');
+      setWeather(res);
+    } catch {
+      // sessizce geç -- kart zaten "available" olmayan durumu gizliyor,
+      // bir sonraki döngüde tekrar denenecek.
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      loadWeather();
+      const interval = setInterval(() => {
+        if (!cancelled) loadWeather();
+      }, WEATHER_POLL_MS);
+      return () => {
+        cancelled = true;
+        clearInterval(interval);
+      };
+    }, [loadWeather]),
   );
 
   const partnerName = partner?.name ?? 'Partnerin';
@@ -162,6 +191,20 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
               </Callout>
             </Marker>
           </MapView>
+
+          {weather?.shared && weather.available && (
+            <View style={styles.weatherCard}>
+              <MaterialCommunityIcons
+                name={weather.icon as React.ComponentProps<typeof MaterialCommunityIcons>['name']}
+                size={22}
+                color={colors.primary}
+              />
+              <View>
+                <Text style={styles.weatherTemp}>{weather.tempC}°</Text>
+                <Text style={styles.weatherDescription}>{weather.description}</Text>
+              </View>
+            </View>
+          )}
 
           {me.distanceKm != null && (
             <View style={styles.distanceCard}>
@@ -218,6 +261,25 @@ const styles = StyleSheet.create({
     lineHeight: 19,
   },
   mapWrap: { flex: 1 },
+  weatherCard: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 5,
+  },
+  weatherTemp: { fontFamily: theme.fonts.heading, fontSize: 15, color: colors.foreground },
+  weatherDescription: { fontFamily: theme.fonts.body, fontSize: 11, color: colors.mutedForeground, marginTop: 1 },
   markerDot: {
     width: 30,
     height: 30,
