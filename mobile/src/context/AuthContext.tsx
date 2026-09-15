@@ -19,6 +19,7 @@ import {
 import { readBatteryInfo } from '../location/batteryInfo';
 import { configureRevenueCat, loginRevenueCatCouple, logoutRevenueCat } from '../subscriptions/purchases';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
+import { syncWidgetSnapshot } from '../widgets/snapshot';
 
 const TOKEN_KEY = 'uspulse_token';
 // Biyometrik (Face ID/parmak izi) giriş özelliği kaldırıldı -- bu iki anahtar
@@ -270,6 +271,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (me.user.coupleId) {
         loginRevenueCatCouple(me.user.coupleId);
       }
+      // Ana ekran widget'ı (bkz. src/widgets/snapshot.ts): her başarılı /me
+      // çekişinde en güncel "birlikte X gündür"/mesafe verisini widget'ın
+      // okuduğu yerel depoya yazar. Fire-and-forget -- widget bir sonraki
+      // senkronizasyona kadar eski veriyi göstermeye devam eder.
+      syncWidgetSnapshot(me).catch(() => {});
     },
     [syncBackgroundLocationTracking, syncDrivingLocationTracking],
   );

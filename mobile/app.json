@@ -26,6 +26,9 @@
       },
       "config": {
         "googleMapsApiKey": "AIzaSyCmTIemLmnT5ZYxWppLSRsmQc3CXYk1eXY"
+      },
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.app.uspulse.mobile"]
       }
     },
     "android": {
@@ -102,7 +105,26 @@
           "microphonePermission": "Anılar'a ses notu ekleyebilmek için mikrofonuna erişim izni gerekir."
         }
       ],
-      "expo-video"
+      "expo-video",
+      "@bacons/apple-targets",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "UsPulseWidget",
+              "label": "UsPulse",
+              "description": "Birlikte kaç gündür olduğunuzu ve aranızdaki mesafeyi gösterir.",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            }
+          ]
+        }
+      ]
     ]
   }
 }
