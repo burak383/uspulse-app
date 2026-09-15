@@ -19,6 +19,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.uspulse.mobile",
+      "appleTeamId": "F6HT4L9LT2",
       "icon": "./assets/icon.png",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "Anılar'a ses notu ekleyebilmek için mikrofonuna erişim izni gerekir.",
