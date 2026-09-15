@@ -10,6 +10,8 @@ export type RootStackParamList = {
   Surus: undefined;
   PartnerKonum: undefined;
   AvatarSecimi: undefined;
+  Sohbet: undefined;
+  AskDili: undefined;
 };
 
 // Konum ve Sürüş, alt sekme çubuğuna eklendi (bkz.

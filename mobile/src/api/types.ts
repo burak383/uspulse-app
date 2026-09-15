@@ -166,7 +166,10 @@ export type NotificationType =
   | 'savings_contribution'
   | 'savings_withdrawal'
   | 'question_answer'
-  | 'reunion_update';
+  | 'reunion_update'
+  | 'message'
+  | 'milestone'
+  | 'love_language';
 
 export interface NotificationItem {
   id: string;
@@ -181,4 +184,38 @@ export interface NotificationItem {
 export interface NotificationsResponse {
   items: NotificationItem[];
   unreadCount: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  couple_id: string;
+  sender_id: string;
+  type: 'text' | 'audio';
+  text: string | null;
+  media_url: string | null;
+  duration_ms: number | null;
+  created_at: string;
+  read_at: string | null;
+}
+
+export interface ChatMessagesResponse {
+  messages: ChatMessage[];
+  /** true ise, ?before ile daha eski mesajlar için bir sonraki sayfa istenebilir. */
+  hasMore: boolean;
+}
+
+/**
+ * "Aşk dili" testi sonucu -- scores, src/quiz/askDili.ts'teki
+ * LoveLanguageKey'lere göre anahtarlanmış puan sayısı (her biri 0-10 arası,
+ * toplamı 10 -- 10 sorunun her biri tek bir kategoriye 1 puan ekler).
+ */
+export interface LoveLanguageResult {
+  scores: Record<string, number>;
+  topLanguage: string;
+  at: string;
+}
+
+export interface LoveLanguageResponse {
+  me: LoveLanguageResult | null;
+  partner: LoveLanguageResult | null;
 }

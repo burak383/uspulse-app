@@ -209,40 +209,54 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
               </Text>
             </View>
 
-            <Pressable
-              accessibilityLabel="Bildirimler"
-              style={styles.notificationButton}
-              onPress={async () => {
-                const items = notifications?.items ?? [];
-                if (items.length === 0) {
-                  Alert.alert('Bildirimler', 'Henüz yeni bir bildirim yok.');
-                  return;
-                }
-                const lines = items
-                  .slice(0, 8)
-                  .map((n) => `${n.title}${n.body ? `\n${n.body}` : ''} · ${new Date(n.at).toLocaleString('tr-TR')}`)
-                  .join('\n\n');
-                Alert.alert('Son bildirimler', lines);
-                // Görüldü sayılsın: rozeti temizle.
-                if ((notifications?.unreadCount ?? 0) > 0) {
-                  try {
-                    await api.post('/notifications/read-all', {});
-                    setNotifications((prev) => (prev ? { ...prev, unreadCount: 0 } : prev));
-                  } catch {
-                    // best-effort: rozet bir sonraki yenilemede zaten güncellenir
+            <View style={styles.headerActions}>
+              {/* Sohbet, Günün Sorusu gibi (bkz. aşağıdaki questionCard) alt
+                  sekme çubuğunda yer almıyor -- buradan tek dokunuşla açılan
+                  ayrı bir stack ekranı (bkz. navigation/types.ts Sohbet,
+                  screens/Sohbet.tsx). */}
+              <Pressable
+                accessibilityLabel="Sohbet"
+                style={styles.notificationButton}
+                onPress={() => navigation.navigate('Sohbet')}
+              >
+                <Icon name="chat-outline" size={22} color={colors.cardForeground} />
+              </Pressable>
+
+              <Pressable
+                accessibilityLabel="Bildirimler"
+                style={styles.notificationButton}
+                onPress={async () => {
+                  const items = notifications?.items ?? [];
+                  if (items.length === 0) {
+                    Alert.alert('Bildirimler', 'Henüz yeni bir bildirim yok.');
+                    return;
                   }
-                }
-              }}
-            >
-              <Icon name="bell-outline" size={22} color={colors.cardForeground} />
-              {Boolean(notifications?.unreadCount) && (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>
-                    {notifications!.unreadCount > 9 ? '9+' : notifications!.unreadCount}
-                  </Text>
-                </View>
-              )}
-            </Pressable>
+                  const lines = items
+                    .slice(0, 8)
+                    .map((n) => `${n.title}${n.body ? `\n${n.body}` : ''} · ${new Date(n.at).toLocaleString('tr-TR')}`)
+                    .join('\n\n');
+                  Alert.alert('Son bildirimler', lines);
+                  // Görüldü sayılsın: rozeti temizle.
+                  if ((notifications?.unreadCount ?? 0) > 0) {
+                    try {
+                      await api.post('/notifications/read-all', {});
+                      setNotifications((prev) => (prev ? { ...prev, unreadCount: 0 } : prev));
+                    } catch {
+                      // best-effort: rozet bir sonraki yenilemede zaten güncellenir
+                    }
+                  }
+                }}
+              >
+                <Icon name="bell-outline" size={22} color={colors.cardForeground} />
+                {Boolean(notifications?.unreadCount) && (
+                  <View style={styles.notificationBadge}>
+                    <Text style={styles.notificationBadgeText}>
+                      {notifications!.unreadCount > 9 ? '9+' : notifications!.unreadCount}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
+            </View>
           </View>
 
           <View style={styles.radarCard}>
@@ -520,6 +534,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   headerCopy: {
     flex: 1,

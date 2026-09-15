@@ -16,6 +16,8 @@ import DailyQuestionScreen from '../screens/GNNSorusu';
 import DrivingScreen from '../screens/Surus';
 import PartnerLocationScreen from '../screens/PartnerKonum';
 import AvatarSelectionScreen from '../screens/AvatarSecimi';
+import ChatScreen from '../screens/Sohbet';
+import LoveLanguageScreen from '../screens/AskDili';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -63,6 +65,8 @@ export default function RootNavigator() {
           <Stack.Screen name="Anilar" component={MemoriesScreen} />
           <Stack.Screen name="Biz" component={TogetherScreen} />
           <Stack.Screen name="GununSorusu" component={DailyQuestionScreen} />
+          <Stack.Screen name="Sohbet" component={ChatScreen} />
+          <Stack.Screen name="AskDili" component={LoveLanguageScreen} />
           <Stack.Screen name="Surus" component={DrivingScreen} />
           <Stack.Screen name="PartnerKonum" component={PartnerLocationScreen} />
           <Stack.Screen name="AvatarSecimi" component={AvatarSelectionScreen} />

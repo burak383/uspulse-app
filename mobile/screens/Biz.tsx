@@ -30,6 +30,7 @@ import { confirmAsync } from '../src/utils/confirm';
 import { AvatarView } from '../src/components/AvatarView';
 import { removeAvatar as removeAvatarRequest } from '../src/media/avatarUpload';
 import { BottomTabBar } from '../src/components/BottomTabBar';
+import { LOVE_LANGUAGE_QUESTIONS } from '../src/quiz/askDili';
 
 const colors = theme.colors;
 
@@ -633,6 +634,26 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
             />
           </View>
         </View>
+
+        <Pressable
+          style={styles.card}
+          onPress={() => navigation.navigate('AskDili')}
+          accessibilityRole="button"
+          accessibilityLabel="Aşk dili testi"
+        >
+          <View style={styles.contentRow}>
+            <RoundIcon name="cards-heart-outline" color={colors.accent} backgroundColor={colors.accent} size={21} />
+            <View style={styles.flex}>
+              <Text style={styles.eyebrow}>UYUM TESTİ</Text>
+              <Text style={styles.cardTitle}>Aşk dilini keşfet</Text>
+              <Text style={styles.caption}>
+                {LOVE_LANGUAGE_QUESTIONS.length} soruluk kısa bir testle sevgi dilini öğren, partnerinkiyle
+                karşılaştır.
+              </Text>
+            </View>
+            <Icon name="chevron-right" size={20} color={colors.mutedForeground} />
+          </View>
+        </Pressable>
 
         <View style={styles.card}>
           <View style={styles.contentRow}>
