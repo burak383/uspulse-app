@@ -39,7 +39,7 @@ const CATEGORY_LABELS: Record<AvatarCategory, string> = {
 };
 
 export default function AvatarSelectionScreen({ navigation }: { navigation: NavProp }) {
-  const { user, refresh, logout, requestTabRedirect } = useAuth();
+  const { user, refresh, logout, requestTabRedirect, clearPendingTabRedirect } = useAuth();
   const [busy, setBusy] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const canGoBack = navigation.canGoBack();
@@ -126,14 +126,27 @@ export default function AvatarSelectionScreen({ navigation }: { navigation: NavP
   // ilk ekran) kendisinin yönlendirmesini istiyoruz.
   const handleFinish = async () => {
     if (busy || !previewValue) return;
-    if (!canGoBack) requestTabRedirect('Biz');
+    const isFirstTime = !canGoBack;
+    if (isFirstTime) requestTabRedirect('Biz');
     setBusy(true);
     try {
       await refresh();
+      if (canGoBack) navigation.navigate('Biz');
+    } catch {
+      // refresh() ağ hatası/geçici sunucu hatası (ör. Render'ın ücretsiz
+      // planındaki soğuk başlama gecikmesi) yüzünden başarısız olabilir --
+      // bunu SESSİZCE yutmak, kullanıcıya "tuş tepki vermiyor" gibi
+      // görünüyordu (spinner kaybolur, hiçbir şey olmaz, hata da yok).
+      // Bunun yerine açıkça bildirip tekrar denemesini istiyoruz; ilk
+      // kurulum akışındaysak, başarısız denemenin bekleyen yönlendirmeyi
+      // (pendingTabRedirect) kalıcı olarak ayarlı bırakmaması için de
+      // temizliyoruz -- aksi halde kullanıcı daha sonra farklı bir
+      // yoldan Yuva'ya düşerse beklenmedik şekilde Biz'e yönlendirilebilirdi.
+      if (isFirstTime) clearPendingTabRedirect();
+      alertInfo('Tamamlanamadı', 'Bir bağlantı sorunu oluştu. Lütfen tekrar dene.');
     } finally {
       setBusy(false);
     }
-    if (canGoBack) navigation.navigate('Biz');
   };
 
   const handleLogout = () => {
