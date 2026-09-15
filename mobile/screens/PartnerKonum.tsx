@@ -4,7 +4,10 @@
 // rıza şartı), bu ekran salt görüntüleme amaçlı; açma/kapama anahtarı
 // Biz.tsx'teki "Gizliliğiniz sizin elinizde" kartında.
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+// bkz. Surus.tsx'teki aynı açıklama -- react-native'in kendi SafeAreaView'ı
+// yerine react-native-safe-area-context kullanıyoruz.
+import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Callout, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';

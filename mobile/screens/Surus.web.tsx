@@ -8,7 +8,10 @@
 // etmek için kullanılıyor (bkz. Paywall/RevenueCat notları), bu yüzden
 // burada haritasız bir bilgilendirme yeterli.
 import React from 'react';
-import { SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
+// bkz. Surus.tsx'teki aynı açıklama -- react-native'in kendi SafeAreaView'ı
+// yerine react-native-safe-area-context kullanıyoruz.
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';

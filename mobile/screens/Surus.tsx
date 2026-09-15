@@ -9,7 +9,13 @@
 // Biz.tsx'teki "Gizliliğiniz sizin elinizde" kartında (diğer tüm gizlilik
 // anahtarlarıyla aynı yerde) -- bu ekran salt görüntüleme amaçlı.
 import React, { useCallback, useRef, useState } from 'react';
-import { ActivityIndicator, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+// react-native'in kendi SafeAreaView'ı yalnızca iOS'ta gerçek bir şey yapar --
+// Android'de düz bir View'dan farksızdır (bkz. RN kaynağı), bu yüzden
+// react-native-safe-area-context'in App.tsx'teki SafeAreaProvider'dan gerçek
+// güvenli alan (status bar / gesture nav) değerlerini okuyan sürümünü
+// kullanıyoruz -- iki platformda da doğru boşluk bırakır.
+import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';

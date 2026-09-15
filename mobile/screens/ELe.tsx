@@ -5,7 +5,6 @@ import {
   Image,
   Linking,
   Pressable,
-  SafeAreaView,
   ScrollView,
   Share,
   StyleSheet,
@@ -13,6 +12,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
+// bkz. Surus.tsx'teki aynı açıklama -- react-native'in kendi SafeAreaView'ı
+// yerine react-native-safe-area-context kullanıyoruz.
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, FontAwesome, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, fonts } from '../theme';
@@ -177,7 +179,13 @@ export default function MatchScreen() {
           <View style={styles.glowPrimary} />
           <View style={styles.glowAccent} />
 
-          <SafeAreaView>
+          {/* Bu, tam ekranı kaplayan bir SafeAreaView değil -- ScrollView içindeki
+              hero bölümünün üst kısmı, sadece başlık satırının durum çubuğunun
+              altında kalması için var. edges=['top'] olmadan
+              react-native-safe-area-context alt kenara da (ekranın gerçek altı
+              olmadığı halde) boşluk ekler ve resmin altında istenmeyen bir
+              boşluk bırakırdı. */}
+          <SafeAreaView edges={['top']}>
             <View style={styles.header}>
               <Pressable
                 accessibilityLabel="Çıkış yap"
