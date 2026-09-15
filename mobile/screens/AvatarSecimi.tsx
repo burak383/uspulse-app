@@ -43,23 +43,25 @@ export default function AvatarSelectionScreen({ navigation }: { navigation: NavP
   const [busy, setBusy] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const canGoBack = navigation.canGoBack();
-  const currentPreset = parsePresetAvatar(user?.avatarUrl);
-  const hasCustomPhoto = Boolean(user?.avatarUrl) && !currentPreset;
-
-  const finishIfEditing = () => {
-    if (canGoBack) navigation.goBack();
-    // Aksi halde (ilk kurulum) RootNavigator, user.avatarUrl artık dolu
-    // olduğu için bir sonraki render'da otomatik olarak Yuva'ya geçiyor --
-    // burada manuel bir yönlendirmeye gerek yok.
-  };
+  // Seçim yapılır yapılmaz refresh() çağırıp user.avatarUrl'i doldurursak,
+  // RootNavigator'daki needsAvatar hemen false olur ve bu ekran (ilk kurulum
+  // akışında) kullanıcı "Tamamlandı"ya dokunmadan kendiliğinden Yuva'ya
+  // geçer -- bu yüzden seçim, onaylanana kadar SADECE yerel state'te
+  // (pendingValue) tutuluyor; sunucuya hemen kaydediliyor ama AuthContext'e
+  // (ve dolayısıyla RootNavigator'ın koşuluna) "Tamamlandı"ya basılana kadar
+  // yansımıyor.
+  const [pendingValue, setPendingValue] = useState<string | null>(null);
+  const previewValue = pendingValue ?? user?.avatarUrl ?? null;
+  const currentPreset = parsePresetAvatar(previewValue);
+  const hasCustomPhoto = Boolean(previewValue) && !currentPreset;
 
   const choosePreset = async (preset: AvatarPreset) => {
     if (busy) return;
     setBusy(true);
     try {
-      await uploadAvatarValue(presetAvatarValue(preset));
-      await refresh();
-      finishIfEditing();
+      const value = presetAvatarValue(preset);
+      await uploadAvatarValue(value);
+      setPendingValue(value);
     } catch {
       alertInfo('Kaydedilemedi', 'Avatar seçilirken bir sorun oluştu. Lütfen tekrar dene.');
     } finally {
@@ -74,8 +76,7 @@ export default function AvatarSelectionScreen({ navigation }: { navigation: NavP
       const image = await pickAvatarImage(source);
       if (!image) return; // kullanıcı iptal etti
       await uploadAvatarValue(image);
-      await refresh();
-      finishIfEditing();
+      setPendingValue(image);
     } catch (e) {
       alertInfo(
         source === 'camera' ? 'Fotoğraf çekilemedi' : 'Fotoğraf yüklenemedi',
@@ -96,12 +97,28 @@ export default function AvatarSelectionScreen({ navigation }: { navigation: NavP
     setBusy(true);
     try {
       await removeAvatar();
+      setPendingValue(null);
       await refresh();
     } catch {
       alertInfo('Kaldırılamadı', 'Lütfen tekrar dene.');
     } finally {
       setBusy(false);
     }
+  };
+
+  // "Tamamlandı": seçim zaten sunucuya kaydedilmişti (yukarıdaki
+  // choosePreset/pickFromDevice) -- burada sadece AuthContext'i tazeleyip
+  // (RootNavigator'ın needsAvatar koşulunu güncelleyip) doğrudan Biz
+  // sekmesine yönlendiriyoruz.
+  const handleFinish = async () => {
+    if (busy || !previewValue) return;
+    setBusy(true);
+    try {
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+    navigation.navigate('Biz');
   };
 
   const handleLogout = () => {
@@ -145,7 +162,7 @@ export default function AvatarSelectionScreen({ navigation }: { navigation: NavP
             {busy ? (
               <ActivityIndicator color={colors.mutedForeground} />
             ) : (
-              <AvatarView avatarUrl={user?.avatarUrl} size={92} />
+              <AvatarView avatarUrl={previewValue} size={92} />
             )}
           </View>
           <Text style={styles.title}>
@@ -214,6 +231,21 @@ export default function AvatarSelectionScreen({ navigation }: { navigation: NavP
             </View>
           </View>
         ))}
+
+        {previewValue && (
+          <Pressable
+            style={[styles.finishButton, busy && styles.finishButtonDisabled]}
+            onPress={handleFinish}
+            disabled={busy}
+            accessibilityLabel="Tamamlandı"
+          >
+            {busy ? (
+              <ActivityIndicator color={colors.primaryForeground} />
+            ) : (
+              <Text style={styles.finishButtonText}>Tamamlandı</Text>
+            )}
+          </Pressable>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -301,6 +333,16 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   presetTileSelected: { borderColor: colors.primary },
+  finishButton: {
+    marginTop: 24,
+    paddingVertical: 15,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  finishButtonDisabled: { opacity: 0.7 },
+  finishButtonText: { fontFamily: theme.fonts.body, fontSize: 15, fontWeight: '700', color: colors.primaryForeground },
   selectedBadge: {
     position: 'absolute',
     right: -2,
