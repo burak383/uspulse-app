@@ -3,10 +3,19 @@
 // ekran olarak bu gösteriliyor, tıpkı Paywall gibi). Aynı ekran, avatarı
 // zaten olan kullanıcılar için Biz.tsx'teki "Profil fotoğrafını değiştir"
 // dokunuşuyla da normal bir stack ekranı olarak açılabiliyor -- ikisi
-// arasındaki fark navigation.canGoBack(): geri dönecek bir ekran yoksa
-// (ilk kez, zorunlu adım) geri/atla butonu yok ve sadece çıkış yapma
-// seçeneği var (ELe.tsx'teki eşleşme ekranıyla aynı mantık); geri dönecek
-// bir ekran varsa (düzenleme amaçlı açılmış) normal bir geri oku gösteriyoruz.
+// arasındaki fark route.params?.editing (bkz. navigation/types.ts):
+// düzenleme amaçlı açılmışsa (Biz.tsx bunu AÇIKÇA `editing: true` ile
+// belirtiyor) normal bir geri oku gösteriyoruz; yoksa (ilk kez, zorunlu
+// adım) geri/atla butonu yok, sadece çıkış yapma seçeneği var (ELe.tsx'teki
+// eşleşme ekranıyla aynı mantık).
+//
+// ÖNEMLİ: bunu ESKİDEN navigation.canGoBack()'ten çıkarsıyorduk -- ama bu
+// güvenilir değildi. RootNavigator'ın koşullu ekran listesi geçişlerinde
+// (Match -> AvatarSecimi -> tam liste) navigasyon geçmişinden kalıntılar,
+// canGoBack()'in İLK KURULUMDA BİLE yanlışlıkla true dönmesine yol
+// açabiliyordu; bu da "Tamamlandı" tuşunun handleFinish'te yanlış dalı
+// (doğrudan navigate('Biz')) seçmesine sebep oluyordu -- o an 'Biz' henüz
+// ekran listesinde olmadığından bu çağrı sessizce hiçbir şey yapmıyordu.
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
@@ -20,7 +29,7 @@ import {
 // yerine react-native-safe-area-context kullanıyoruz.
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { theme } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 import { AvatarView } from '../src/components/AvatarView';
@@ -31,18 +40,20 @@ import { confirmAsync, alertInfo } from '../src/utils/confirm';
 
 const colors = theme.colors;
 
-type NavProp = NativeStackNavigationProp<RootStackParamList, 'AvatarSecimi'>;
+type ScreenProps = NativeStackScreenProps<RootStackParamList, 'AvatarSecimi'>;
 
 const CATEGORY_LABELS: Record<AvatarCategory, string> = {
   kadin: 'Kadın avatarları',
   erkek: 'Erkek avatarları',
 };
 
-export default function AvatarSelectionScreen({ navigation }: { navigation: NavProp }) {
+export default function AvatarSelectionScreen({ navigation, route }: ScreenProps) {
   const { user, refresh, logout, requestTabRedirect, clearPendingTabRedirect } = useAuth();
   const [busy, setBusy] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const canGoBack = navigation.canGoBack();
+  // bkz. yukarıdaki dosya başı açıklaması -- artık navigation.canGoBack()
+  // yerine açıkça geçirilen bu parametreye güveniyoruz.
+  const isEditing = route.params?.editing === true;
   // Seçim yapılır yapılmaz refresh() çağırıp user.avatarUrl'i doldurursak,
   // RootNavigator'daki needsAvatar hemen false olur ve bu ekran (ilk kurulum
   // akışında) kullanıcı "Tamamlandı"ya dokunmadan kendiliğinden Yuva'ya
@@ -110,11 +121,12 @@ export default function AvatarSelectionScreen({ navigation }: { navigation: NavP
   // choosePreset/pickFromDevice) -- burada sadece AuthContext'i tazeleyip
   // Biz sekmesine yönlendiriyoruz.
   //
-  // Düzenleme modunda (canGoBack true -- kullanıcının zaten bir avatarı
-  // vardı, needsAvatar zaten false, refresh() bu ekranın kayıtlı kalıp
+  // Düzenleme modunda (isEditing true -- Biz.tsx bunu AÇIKÇA route
+  // parametresiyle belirtiyor; kullanıcının zaten bir avatarı vardı,
+  // needsAvatar zaten false, refresh() bu ekranın kayıtlı kalıp
   // kalmayacağını etkilemiyor) doğrudan navigate() güvenli.
   //
-  // İlk kurulum akışında (canGoBack false) ise refresh(), user.avatarUrl'i
+  // İlk kurulum akışında (isEditing false) ise refresh(), user.avatarUrl'i
   // doldurup RootNavigator'daki needsAvatar'ı false yapar -- bu da
   // Stack.Navigator'ın ekran listesini TEK ekranlı ("AvatarSecimi") halden
   // tam listeye (ilk ekranı Yuva) değiştirir ve bu ekran hemen unmount
@@ -126,12 +138,12 @@ export default function AvatarSelectionScreen({ navigation }: { navigation: NavP
   // ilk ekran) kendisinin yönlendirmesini istiyoruz.
   const handleFinish = async () => {
     if (busy || !previewValue) return;
-    const isFirstTime = !canGoBack;
+    const isFirstTime = !isEditing;
     if (isFirstTime) requestTabRedirect('Biz');
     setBusy(true);
     try {
       await refresh();
-      if (canGoBack) navigation.navigate('Biz');
+      if (isEditing) navigation.navigate('Biz');
     } catch {
       // refresh() ağ hatası/geçici sunucu hatası (ör. Render'ın ücretsiz
       // planındaki soğuk başlama gecikmesi) yüzünden başarısız olabilir --
@@ -164,7 +176,7 @@ export default function AvatarSelectionScreen({ navigation }: { navigation: NavP
           açıyordu (bkz. sayfalar arası renk farklılığı düzeltmesi). */}
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          {canGoBack ? (
+          {isEditing ? (
             <Pressable accessibilityLabel="Geri dön" style={styles.circleButton} onPress={() => navigation.goBack()}>
               <MaterialCommunityIcons name="arrow-left" size={20} color={colors.foreground} />
             </Pressable>
@@ -194,10 +206,10 @@ export default function AvatarSelectionScreen({ navigation }: { navigation: NavP
             )}
           </View>
           <Text style={styles.title}>
-            {canGoBack ? 'Avatarını değiştir' : 'Sana nasıl görünelim?'}
+            {isEditing ? 'Avatarını değiştir' : 'Sana nasıl görünelim?'}
           </Text>
           <Text style={styles.subtitle}>
-            {canGoBack
+            {isEditing
               ? 'Hazır avatarlardan birini seç ya da kendi fotoğrafını yükle.'
               : 'Eşleştiniz! Şimdi partnerine nasıl görüneceğini seç -- hazır bir avatar seçebilir ya da kendi fotoğrafını yükleyebilirsin.'}
           </Text>

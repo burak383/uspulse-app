@@ -520,7 +520,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
               <Pressable
                 accessibilityLabel="Profil fotoğrafını değiştir"
                 style={[styles.avatar, styles.elifAvatar]}
-                onPress={() => navigation.navigate('AvatarSecimi')}
+                onPress={() => navigation.navigate('AvatarSecimi', { editing: true })}
                 disabled={avatarUploading}
               >
                 {avatarUploading ? (

@@ -9,7 +9,15 @@ export type RootStackParamList = {
   GununSorusu: undefined;
   Surus: undefined;
   PartnerKonum: undefined;
-  AvatarSecimi: undefined;
+  // editing: true -- Biz.tsx'teki "Profil fotoğrafını değiştir" dokunuşuyla
+  // açıldığını AÇIKÇA belirtir (bkz. AvatarSecimi.tsx). Bunu
+  // navigation.canGoBack()'ten çıkarsamıyoruz: RootNavigator'ın koşullu ekran
+  // listesi geçişlerinde (Match -> AvatarSecimi -> tam liste) navigasyon
+  // geçmişinden kalıntılar canGoBack()'in ilk kurulumda bile yanlışlıkla
+  // true dönmesine yol açabiliyordu -- bu da "Tamamlandı" tuşunun Biz
+  // sekmesine hiç yönlendirmemesine sebep oluyordu (navigate('Biz'), o an
+  // henüz ekran listesinde olmayan bir ekrana sessizce başarısız oluyordu).
+  AvatarSecimi: { editing?: boolean } | undefined;
   Sohbet: undefined;
   AskDili: undefined;
 };
