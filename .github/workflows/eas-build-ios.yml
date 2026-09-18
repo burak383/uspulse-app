@@ -1,0 +1,42 @@
+name: EAS Submit (iOS)
+ 
+# eas-build-ios.yml ile alınan EN SON iOS build'ini App Store Connect'e
+# (TestFlight'a) gönderir. Bilerek ayrı bir workflow -- build almakla
+# App Store'a göndermek farklı, geri alınamaz adımlar, ikisini otomatik
+# zincirlemek istemiyoruz. SADECE elle tetiklenir.
+#
+# Önkoşul: eas-build-ios.yml ile daha önce başarılı bir production build
+# alınmış olmalı (bu workflow --latest ile en son biteni gönderir).
+on:
+  workflow_dispatch: {}
+ 
+jobs:
+  submit:
+    name: Submit latest iOS build to App Store Connect
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - name: Repoyu çek
+        uses: actions/checkout@v4
+ 
+      - name: Node kur
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+ 
+      - name: EAS CLI kur ve giriş yap
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+          packager: npm
+ 
+      - name: Bağımlılıkları kur
+        run: npm ci
+ 
+      - name: En son iOS build'ini App Store Connect'e gönder
+        run: eas submit --platform ios --profile production --latest --non-interactive
