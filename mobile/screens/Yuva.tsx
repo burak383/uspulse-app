@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Alert,
   Image,
@@ -112,12 +112,30 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
   // handleFinish -- ilk kurulumda avatar seçimi tamamlandığında RootNavigator
   // kesin olarak BURAYA (Yuva) iner; eğer bir yönlendirme bekleniyorsa
   // (ör. Biz sekmesi) hemen devralıp oraya geçiyoruz.
-  useEffect(() => {
-    if (pendingTabRedirect) {
+  //
+  // ÖNEMLİ: bunu düz bir useEffect yerine useFocusEffect + bir sonraki
+  // kareye ertelenmiş navigate() ile yapıyoruz. Bu ekran, RootNavigator'ın
+  // Stack.Navigator'ının ekran listesini TEK ekranlı ("AvatarSecimi") halden
+  // tam listeye değiştirmesiyle AYNI render'da monte oluyor -- native
+  // tarafta bu geçiş (transition) daha TAMAMLANMADAN hemen ikinci bir
+  // navigate() çağırmak, native-stack tarafından sessizce yutulabiliyor
+  // (henüz devam eden bir geçiş varken gelen ikinci navigasyon isteği gibi).
+  // "Tamamlandı" tuşunun Biz sekmesine hiç yönlendirmemesi şikayeti ısrarla
+  // sürdüğü için, hem navigasyon lifecycle'ına bağlanıp (useFocusEffect --
+  // ekran gerçekten "focus" aldığında çalışır) hem de bir sonraki kareyi
+  // bekleyip (requestAnimationFrame) native geçişin oturmasına fırsat
+  // vererek bunu daha sağlam hâle getiriyoruz.
+  useFocusEffect(
+    useCallback(() => {
+      if (!pendingTabRedirect) return;
+      const target = pendingTabRedirect;
       clearPendingTabRedirect();
-      navigation.navigate(pendingTabRedirect);
-    }
-  }, [pendingTabRedirect, clearPendingTabRedirect, navigation]);
+      const frame = requestAnimationFrame(() => {
+        navigation.navigate(target);
+      });
+      return () => cancelAnimationFrame(frame);
+    }, [pendingTabRedirect, clearPendingTabRedirect, navigation]),
+  );
 
   const [mood, setMood] = useState<MoodResponse | null>(null);
   const [touches, setTouches] = useState<TouchesResponse | null>(null);
