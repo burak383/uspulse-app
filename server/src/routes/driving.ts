@@ -49,6 +49,12 @@ router.delete('/share', (req, res) => {
 
 // Mobil taraftaki sürüş algılama görevi (drivingLocationTask.ts), hız bir
 // eşiğin üstünde kaldığı sürece bunu periyodik olarak çağırır.
+//
+// GEÇİCİ TEŞHİS LOG'U (2026-09): "sürüş takibi arka planda hiç çalışmıyor"
+// şikayetini araştırmak için eklendi -- istemci arka planda gerçekten bu
+// endpoint'e ulaşabiliyor mu (OS görevi öldürüyor mu) yoksa ulaşıp da
+// reddediliyor mu (paylaşım kapalı/geçersiz veri) ayırt etmek için. Render
+// log'larında görünür. Kök neden bulununca kaldırılmalı.
 router.put('/point', (req, res) => {
   const shareRow = db.prepare('SELECT driving_share_enabled FROM users WHERE id = ?').get(req.user!.id) as
     | { driving_share_enabled: number }
@@ -57,6 +63,8 @@ router.put('/point', (req, res) => {
   // (ya da hiç açılmadıysa), eski/gecikmiş bir istemci çağrısı yine de
   // reddedilir -- bkz. db.ts users.driving_share_enabled yorumu.
   if (!shareRow?.driving_share_enabled) {
+    // eslint-disable-next-line no-console
+    console.log(`[driving/point][GEÇİCİ] reddedildi (paylaşım kapalı) userId=${req.user!.id}`);
     return res.status(403).json({ error: 'Sürüş takibi paylaşımı açık değil.' });
   }
 
@@ -74,8 +82,13 @@ router.put('/point', (req, res) => {
     !Number.isFinite(speedNum) ||
     speedNum < 0
   ) {
+    // eslint-disable-next-line no-console
+    console.log(`[driving/point][GEÇİCİ] geçersiz gövde userId=${req.user!.id} body=${JSON.stringify(req.body)}`);
     return res.status(400).json({ error: 'Geçerli bir lat/lng/speedKmh gerekli.' });
   }
+
+  // eslint-disable-next-line no-console
+  console.log(`[driving/point][GEÇİCİ] kabul edildi userId=${req.user!.id} speedKmh=${speedNum} lat=${latNum} lng=${lngNum}`);
 
   const now = new Date().toISOString();
   const coupleId = req.user!.coupleId!;
@@ -124,6 +137,8 @@ router.get('/partner', (req, res) => {
     .get(coupleId, req.user!.id) as TripRow | undefined;
 
   if (!row) {
+    // eslint-disable-next-line no-console
+    console.log(`[driving/partner][GEÇİCİ] satır yok, userId=${req.user!.id} coupleId=${coupleId}`);
     return res.json({ active: false });
   }
 
@@ -131,6 +146,8 @@ router.get('/partner', (req, res) => {
   if (Number.isNaN(updatedMs) || Date.now() - updatedMs > STALE_MS) {
     // Bayat seyahat -- muhtemelen uygulama aniden kapandı/öldürüldü ve
     // POST /stop hiç gelmedi. Temizleyip "aktif değil" döndür.
+    // eslint-disable-next-line no-console
+    console.log(`[driving/partner][GEÇİCİ] bayat satır siliniyor userId=${req.user!.id} updated_at=${row.updated_at}`);
     db.prepare('DELETE FROM driving_trips WHERE user_id = ?').run(row.user_id);
     return res.json({ active: false });
   }
