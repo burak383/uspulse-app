@@ -1,7 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
-import { NavigationContainer, DarkTheme } from '@react-navigation/native';
+import { DarkTheme } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFonts, Fraunces_600SemiBold } from '@expo-google-fonts/fraunces';
 import { Manrope_600SemiBold } from '@expo-google-fonts/manrope';
@@ -45,10 +44,13 @@ export default function App() {
     <SafeAreaProvider>
       <ErrorBoundary>
         <AuthProvider>
-          <NavigationContainer theme={navigationTheme}>
-            <StatusBar style="light" />
-            <RootNavigator />
-          </NavigationContainer>
+          {/* NavigationContainer artık RootNavigator'ın İÇİNDE -- bkz.
+              RootNavigator.tsx'teki açıklama: stage (auth/match/avatar/
+              paywall/app) değiştiğinde NavigationContainer'ın TAMAMININ
+              yeniden monte olması gerekiyor, bunun için de useAuth()'a
+              erişimi olan bir bileşenin (RootNavigator) container'ı
+              kendisinin render etmesi gerekiyordu. */}
+          <RootNavigator theme={navigationTheme} />
         </AuthProvider>
       </ErrorBoundary>
     </SafeAreaProvider>
