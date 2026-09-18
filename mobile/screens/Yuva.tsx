@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Pressable,
@@ -114,17 +115,22 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
   // (ör. Biz sekmesi) hemen devralıp oraya geçiyoruz.
   //
   // ÖNEMLİ: bunu düz bir useEffect yerine useFocusEffect + bir sonraki
-  // kareye ertelenmiş navigate() ile yapıyoruz. Bu ekran, RootNavigator'ın
-  // Stack.Navigator'ının ekran listesini TEK ekranlı ("AvatarSecimi") halden
-  // tam listeye değiştirmesiyle AYNI render'da monte oluyor -- native
-  // tarafta bu geçiş (transition) daha TAMAMLANMADAN hemen ikinci bir
-  // navigate() çağırmak, native-stack tarafından sessizce yutulabiliyor
-  // (henüz devam eden bir geçiş varken gelen ikinci navigasyon isteği gibi).
-  // "Tamamlandı" tuşunun Biz sekmesine hiç yönlendirmemesi şikayeti ısrarla
-  // sürdüğü için, hem navigasyon lifecycle'ına bağlanıp (useFocusEffect --
-  // ekran gerçekten "focus" aldığında çalışır) hem de bir sonraki kareyi
-  // bekleyip (requestAnimationFrame) native geçişin oturmasına fırsat
-  // vererek bunu daha sağlam hâle getiriyoruz.
+  // kareye ertelenmiş navigate() ile yapıyoruz -- bu ekran (Yuva) YENİ monte
+  // olduğu an navigasyon geçişinin native tarafta tam oturmasını beklemeden
+  // hemen bir navigate() çağırmak native-stack tarafından sessizce
+  // yutulabiliyor. useFocusEffect + requestAnimationFrame bu ikinci sıçramayı
+  // (Yuva -> Biz) sağlamlaştırıyor.
+  //
+  // NOT: "Tamamlandı" tuşunun HİÇBİR ŞEYE yönlendirmemesi şikayetinin asıl
+  // kök nedeni aslında BURASI DEĞİLDİ -- RootNavigator.tsx'teydi: "AvatarSecimi"
+  // ekranı hem ilk kurulumun tek ekranı hem de tam listenin bir parçası
+  // olduğundan, React Navigation ekran listesi değişse bile aktif ekranı
+  // (AvatarSecimi) hiç bırakmıyordu -- bu YÜZDEN Yuva ZATEN MONTE OLMUYORDU,
+  // aşağıdaki kod hiç çalışma fırsatı bulamıyordu. Asıl düzeltme
+  // RootNavigator.tsx'te NavigationContainer'a stage bazlı bir `key`
+  // verilmesiydi (bkz. oradaki açıklama) -- o olmadan bu useFocusEffect'in
+  // hiçbir önemi yoktu. Bu ikisi birlikte: RootNavigator gerçekten Yuva'ya
+  // geçiyor, Yuva da (varsa) bekleyen yönlendirmeyi Biz'e tamamlıyor.
   useFocusEffect(
     useCallback(() => {
       if (!pendingTabRedirect) return;
@@ -177,8 +183,19 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
     try {
       const res = await api.post<{ mood: string; at: string }>('/mood', { mood: next });
       setMood((prev) => (prev ? { ...prev, me: res } : prev));
-    } catch {
-      Alert.alert('Ruh hâli güncellenemedi', 'Lütfen tekrar dene.');
+    } catch (e) {
+      // ÖNEMLİ: buradaki hata her zaman sabit "Lütfen tekrar dene." metniyle
+      // gösteriliyordu -- sunucunun asıl attığı, çoğu zaman ÇOK daha bilgilendirici
+      // mesaj (ör. sunucu tarafında dakikada en fazla 10 güncellemeyle
+      // sınırlı, bkz. server/src/routes/mood.ts rateLimitPerUser -- hızlı
+      // art arda dokunup ruh halini "gezdirirken" bu sınıra çok kolay
+      // takılınıyor: "Çok fazla istek. Lütfen bir süre sonra tekrar dene.")
+      // sessizce atılıyordu. Kullanıcı NEDEN başarısız olduğunu hiç göremediği
+      // için hemen tekrar tekrar dokunup durumu daha da kötüleştirebiliyordu.
+      // Diğer ekranların hepsinde zaten kullanılan `e.message` deseniyle
+      // (bkz. Sohbet.tsx, GNNSorusu.tsx, AuthContext.tsx vb.) tutarlı hale
+      // getirildi.
+      Alert.alert('Ruh hâli güncellenemedi', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
     } finally {
       setMoodSubmitting(false);
     }
@@ -199,8 +216,10 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
       if (hapticsEnabled) {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       }
-    } catch {
-      Alert.alert('Gönderilemedi', 'Kalbin gönderilemedi, lütfen tekrar dene.');
+    } catch (e) {
+      // bkz. cycleMyMood'daki aynı düzeltme -- burada da sabit metin yerine
+      // sunucunun asıl mesajını (ör. rate limit) gösteriyoruz.
+      Alert.alert('Gönderilemedi', e instanceof Error ? e.message : 'Kalbin gönderilemedi, lütfen tekrar dene.');
     } finally {
       setSendingHeart(false);
     }
@@ -312,18 +331,34 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
             <View style={styles.radarDivider} />
 
             <View style={styles.moodRow}>
-              <Pressable style={styles.moodPill} onPress={cycleMyMood}>
-                <RoundIcon
-                  name="creation"
-                  size={15}
-                  color={colors.accent}
-                  backgroundColor={alpha(colors.accent, 0.2)}
-                />
+              {/* disabled + opacity: sunucu tarafında dakikada en fazla 10
+                  güncellemeyle sınırlı (bkz. cycleMyMood'daki açıklama) --
+                  önceden görsel bir "gönderiliyor" durumu hiç yoktu, bu da
+                  kullanıcının isteğinin gidip gitmediğini anlayamayıp art
+                  arda dokunmasına (ve rate limit'e daha kolay takılmasına)
+                  yol açıyordu. */}
+              <Pressable
+                style={[styles.moodPill, moodSubmitting && styles.moodPillDisabled]}
+                onPress={cycleMyMood}
+                disabled={moodSubmitting}
+              >
+                {moodSubmitting ? (
+                  <View style={[styles.roundIcon, { backgroundColor: alpha(colors.accent, 0.2) }]}>
+                    <ActivityIndicator size="small" color={colors.accent} />
+                  </View>
+                ) : (
+                  <RoundIcon
+                    name="creation"
+                    size={15}
+                    color={colors.accent}
+                    backgroundColor={alpha(colors.accent, 0.2)}
+                  />
+                )}
                 <View style={styles.moodText}>
                   <Text style={styles.moodTitle} numberOfLines={1}>
                     {myName}: {mood?.me?.mood ?? 'Ruh halini seç'}
                   </Text>
-                  <Text style={styles.moodHint}>dokun, değiştir</Text>
+                  <Text style={styles.moodHint}>{moodSubmitting ? 'gönderiliyor...' : 'dokun, değiştir'}</Text>
                 </View>
               </Pressable>
 
@@ -677,6 +712,9 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 24,
     backgroundColor: colors.secondary,
+  },
+  moodPillDisabled: {
+    opacity: 0.6,
   },
   roundIcon: {
     width: 44,
