@@ -1,10 +1,10 @@
-// Uygulamanın 6 ana sekmesi arasında gezinme çubuğu. Eskiden Yuva/Planlar/
+// Uygulamanın 5 ana sekmesi arasında gezinme çubuğu. Eskiden Yuva/Planlar/
 // Anılar/Biz ekranlarının HER BİRİ kendi tab bar'ını (farklı ikon setleri,
-// farklı stil ayrıntılarıyla) ayrı ayrı tanımlıyordu; Konum ve Sürüş de
-// sekme olarak eklenince (bkz. navigation/types.ts TabRouteName) altışar
-// öğeyi 4 farklı yerde senkron tutmak yerine TEK bir bileşene taşındı --
-// bkz. Yuva.tsx/Planlar.tsx/AnLar.tsx/Biz.tsx/PartnerKonum.tsx/Surus.tsx
-// (ve bunların .web.tsx sürümleri) hepsi artık bunu kullanıyor.
+// farklı stil ayrıntılarıyla) ayrı ayrı tanımlıyordu; Konum da sekme olarak
+// eklenince (bkz. navigation/types.ts TabRouteName) beşer öğeyi 4 farklı
+// yerde senkron tutmak yerine TEK bir bileşene taşındı -- bkz.
+// Yuva.tsx/Planlar.tsx/AnLar.tsx/Biz.tsx/PartnerKonum.tsx (ve bunların
+// .web.tsx sürümleri) hepsi artık bunu kullanıyor.
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,7 +19,6 @@ const TABS: { route: TabRouteName; icon: IconName; label: string }[] = [
   { route: 'Anilar', icon: 'image-multiple-outline', label: 'Anılar' },
   { route: 'Biz', icon: 'account-group-outline', label: 'Biz' },
   { route: 'PartnerKonum', icon: 'map-marker-outline', label: 'Konum' },
-  { route: 'Surus', icon: 'car-outline', label: 'Sürüş' },
 ];
 
 export function BottomTabBar({
@@ -100,6 +99,6 @@ const styles = StyleSheet.create({
   },
 });
 
-/** Tüm ekranlardaki mevcut ScrollView'ların, artık daha yüksek/6 öğeli olan bu
+/** Tüm ekranlardaki mevcut ScrollView'ların, artık daha yüksek/5 öğeli olan bu
  * çubuğun arkasında kalmaması için kullanabileceği ortak alt boşluk. */
 export const BOTTOM_TAB_BAR_CLEARANCE = 96;

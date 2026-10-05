@@ -131,11 +131,11 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 -- Sürüş takibi: kullanıcı hızı bir eşiğin üstünde seyrederken ("sürüş
 -- halinde") anlık hızı ve izlediği yolu (rota noktaları) partnerine
--- GERÇEK ZAMANLI ve TEK TARAFLI gösterir (users.lat/lng'deki karşılıklı
--- paylaşım şartı burada aranmaz) -- bkz. routes/driving.ts. Bilinçli
--- olarak GEÇMİŞ tutulmuyor: sürüş bittiğinde (ya da bir süre güncelleme
--- gelmediğinde) satır tamamen silinir, sadece o an aktif olan seyahat
--- var olur (bkz. users.driving_share_enabled).
+-- GERÇEK ZAMANLI gösterir. Artık ayrı bir rıza/sütun yok -- users.lat/lng
+-- dolu mu (yani genel konum paylaşımı açık mı) diye bakılarak aynı izinle
+-- kontrol edilir -- bkz. routes/driving.ts. Bilinçli olarak GEÇMİŞ
+-- tutulmuyor: sürüş bittiğinde (ya da bir süre güncelleme gelmediğinde)
+-- satır tamamen silinir, sadece o an aktif olan seyahat var olur.
 CREATE TABLE IF NOT EXISTS driving_trips (
   user_id TEXT PRIMARY KEY REFERENCES users(id),
   couple_id TEXT NOT NULL REFERENCES couples(id),
@@ -253,10 +253,11 @@ ensureColumn('couples', 'last_milestone_check_days', 'last_milestone_check_days 
 // süresinin dolmasını beklemez. "Hesabım ele geçirildi" senaryosunda gerçek
 // bir korumadır.
 ensureColumn('users', 'token_version', 'token_version INTEGER NOT NULL DEFAULT 0');
-// Sürüş takibini partnere açma onayı -- varsayılan kapalı (0). Kapatıldığında
-// (bkz. routes/driving.ts DELETE /driving/share) aktif seyahat satırı da
-// hemen silinir, böylece partnerin ekranında hayalet bir rota kalmaz.
-ensureColumn('users', 'driving_share_enabled', 'driving_share_enabled INTEGER NOT NULL DEFAULT 0');
+// NOT: eski veritabanlarında artık kullanılmayan bir driving_share_enabled
+// sütunu kalmış olabilir -- sürüş takibi artık ayrı bir rıza değil, konum
+// paylaşımıyla (users.lat/lng) birlikte otomatik kontrol ediliyor (bkz.
+// routes/driving.ts). Sütunu bırakmak zararsız, yeni kurulumlarda hiç
+// oluşturulmuyor.
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id) WHERE google_id IS NOT NULL;');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_facebook_id ON users(facebook_id) WHERE facebook_id IS NOT NULL;');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_apple_id ON users(apple_id) WHERE apple_id IS NOT NULL;');

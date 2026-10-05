@@ -32,21 +32,6 @@ interface Point {
   t: number;
 }
 
-// Sürüş takibini partnere açma onayı. Varsayılan kapalı -- normal "Konum"
-// paylaşımından (routes/me.ts) farklı olarak TEK TARAFLI ve karşılıklı
-// paylaşım şartı olmadan çalıştığı için ayrı bir aç/kapa gerektiriyor (bkz.
-// mobile AuthContext.enableDrivingShare / Biz.tsx).
-router.put('/share', (req, res) => {
-  db.prepare('UPDATE users SET driving_share_enabled = 1 WHERE id = ?').run(req.user!.id);
-  res.status(204).end();
-});
-
-router.delete('/share', (req, res) => {
-  db.prepare('UPDATE users SET driving_share_enabled = 0 WHERE id = ?').run(req.user!.id);
-  db.prepare('DELETE FROM driving_trips WHERE user_id = ?').run(req.user!.id);
-  res.status(204).end();
-});
-
 // Mobil taraftaki sürüş algılama görevi (drivingLocationTask.ts), hız bir
 // eşiğin üstünde kaldığı sürece bunu periyodik olarak çağırır.
 //
@@ -56,16 +41,16 @@ router.delete('/share', (req, res) => {
 // reddediliyor mu (paylaşım kapalı/geçersiz veri) ayırt etmek için. Render
 // log'larında görünür. Kök neden bulununca kaldırılmalı.
 router.put('/point', (req, res) => {
-  const shareRow = db.prepare('SELECT driving_share_enabled FROM users WHERE id = ?').get(req.user!.id) as
-    | { driving_share_enabled: number }
+  const shareRow = db.prepare('SELECT lat FROM users WHERE id = ?').get(req.user!.id) as
+    | { lat: number | null }
     | undefined;
-  // İkinci savunma katmanı: paylaşım ayarı başka bir cihazdan kapatıldıysa
+  // İkinci savunma katmanı: konum paylaşımı başka bir cihazdan kapatıldıysa
   // (ya da hiç açılmadıysa), eski/gecikmiş bir istemci çağrısı yine de
-  // reddedilir -- bkz. db.ts users.driving_share_enabled yorumu.
-  if (!shareRow?.driving_share_enabled) {
+  // reddedilir -- bkz. db.ts driving_trips yorumu.
+  if (shareRow?.lat == null) {
     // eslint-disable-next-line no-console
-    console.log(`[driving/point][GEÇİCİ] reddedildi (paylaşım kapalı) userId=${req.user!.id}`);
-    return res.status(403).json({ error: 'Sürüş takibi paylaşımı açık değil.' });
+    console.log(`[driving/point][GEÇİCİ] reddedildi (konum paylaşımı kapalı) userId=${req.user!.id}`);
+    return res.status(403).json({ error: 'Konum paylaşımı açık değil.' });
   }
 
   const { lat, lng, speedKmh } = req.body ?? {};

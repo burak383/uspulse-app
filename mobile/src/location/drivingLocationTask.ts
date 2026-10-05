@@ -1,16 +1,16 @@
-// Sürüş takibi: kullanıcı "Sürüş takibini paylaş" ayarını açtığında,
-// otomobille sürüş halindeyken (hız bir eşiğin üstünde kaldığı sürece)
-// partnerine GERÇEK ZAMANLI ve TEK TARAFLI hızını ve izlediği yolu (rota)
-// gösterir -- normal "Konum" paylaşımından (backgroundLocationTask.ts)
-// farklı olarak partnerin karşılık olarak konum paylaşmasına gerek yoktur.
-// Bilinçli ve AYRI onay gerektiren bir özelliktir -- bkz.
-// AuthContext.enableDrivingShare ve Biz.tsx'teki uyarı metni.
+// Sürüş takibi: kullanıcı "Konum" paylaşımını açtığında, otomobille sürüş
+// halindeyken (hız bir eşiğin üstünde kaldığı sürece) partnerine GERÇEK
+// ZAMANLI hızını ve izlediği yolu (rota) gösterir -- normal "Konum"
+// paylaşımından (backgroundLocationTask.ts) farklı olarak çok daha sık
+// güncelleme yapar. Artık AYRI bir onay/anahtar DEĞİL -- Konum paylaşımıyla
+// birlikte otomatik olarak başlar/durur, bkz. AuthContext.tsx'teki
+// syncBackgroundLocationTracking ve Biz.tsx'teki "Konum (canlı harita +
+// sürüş)" anahtarı.
 //
 // backgroundLocationTask.ts'ten (mesafe paylaşımı, 5dk/250m) BİLEREK ayrı
 // bir görev: sürüş takibi çok daha sık güncelleme (yaklaşık 15sn) ister,
 // bunu mesafe paylaşımının varsayılan aralığına uygulamak tüm kullanıcılar
-// için gereksiz pil/veri tüketimine yol açardı. Bu görev sadece "Sürüş
-// takibini paylaş" açıkken çalışır.
+// için gereksiz pil/veri tüketimine yol açardı.
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { API_URL } from '../api/client';

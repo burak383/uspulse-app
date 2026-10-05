@@ -47,8 +47,6 @@ export interface MeResponse {
   partnerBatteryCharging: boolean | null;
   /** Partnerin şu anki konumunda ne zamandır olduğu (SQLite datetime('now') biçiminde, "Z" son eki olmadan UTC) -- konum paylaşımıyla aynı karşılıklılık şartına tabi. bkz. PartnerKonum ekranındaki avatar dokunma açıklaması. */
   partnerStationarySince: string | null;
-  /** Sürüş takibini (anlık hız + rota) partnere açtın mı -- bkz. DrivingContext. */
-  drivingShareEnabled: boolean;
   entitlement: Entitlement | null;
 }
 
@@ -59,7 +57,9 @@ export interface DrivingPoint {
 
 /**
  * Partnerin GET /driving/partner yanıtı. Geçmiş tutulmaz -- "active: false"
- * hem sürüş bittiğinde hem de hiç paylaşılmadığında dönebilir.
+ * hem sürüş bittiğinde hem de hiç paylaşılmadığında dönebilir. Sürüş takibi
+ * artık ayrı bir rıza/anahtar DEĞİL -- Konum paylaşımı (bkz. MeResponse
+ * locationSharedByMe) açık olduğu sürece otomatik olarak etkin olur.
  */
 export type DrivingStatusResponse =
   | { active: false }

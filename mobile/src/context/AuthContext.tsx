@@ -93,16 +93,11 @@ interface AuthContextValue {
   stopSharingLocation: () => Promise<void>;
   // Konum paylaşımı açıkken uygulama arka plandayken/kapalıyken de mesafeyi
   // güncel tutan sürekli takip gerçekten etkin mi (izin + görev kaydı).
+  // Sürüş takibi (hız + rota) ARTIK ayrı bir onay/ekran DEĞİL -- Konum
+  // paylaşımı açıkken otomobille sürüş halindeyken (hız bir eşiğin üstünde
+  // kaldığı sürece) otomatik olarak da etkinleşir, bkz.
+  // syncBackgroundLocationTracking ve drivingLocationTask.ts.
   backgroundLocationEnabled: boolean;
-  // Sürüş takibi: AÇIK olduğunda, otomobille sürüş halindeyken (hız bir
-  // eşiğin üstünde kaldığı sürece) anlık hızın ve izlediğin yol partnerine
-  // GERÇEK ZAMANLI ve TEK TARAFLI gösterilir (normal "Konum" ayarından
-  // farklı olarak partnerin de aynı ayarı açmasına gerek yok) -- bilinçli,
-  // ayrı onay gerektiren bir özellik. Varsayılan kapalı.
-  drivingShareEnabled: boolean;
-  drivingSubmitting: boolean;
-  enableDrivingShare: () => Promise<void>;
-  disableDrivingShare: () => Promise<void>;
   // "Kalbimi Gönder" titreşimi: kendi cihazında anlık geri bildirim VE
   // partnerin "dokunuşu" gerçek zamanlı bildirimle aldığında titreşim.
   hapticsEnabled: boolean;
@@ -138,8 +133,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [locationSharedByPartner, setLocationSharedByPartner] = useState(false);
   const [locationSubmitting, setLocationSubmitting] = useState(false);
   const [backgroundLocationEnabled, setBackgroundLocationEnabled] = useState(false);
-  const [drivingShareEnabled, setDrivingShareEnabled] = useState(false);
-  const [drivingSubmitting, setDrivingSubmitting] = useState(false);
   const [hapticsEnabled, setHapticsEnabledState] = useState(true);
   const [entitlement, setEntitlement] = useState<Entitlement | null>(null);
   const [pendingTabRedirect, setPendingTabRedirect] = useState<TabRouteName | null>(null);
@@ -224,17 +217,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [hapticsEnabled]);
 
   // Sunucudaki "konum paylaşılıyor" durumuyla cihazdaki arka plan takip
-  // görevini senkronize eder: paylaşım kapalıysa görevi durdurur; açıksa ve
-  // "her zaman izin ver" konum izni zaten verilmişse (burada YENİDEN
-  // SORULMAZ -- izin istemek yalnızca shareLocationNow/shareLocationBestEffort
-  // içindeki açık kullanıcı eylemlerinde olur) görevi (yeniden) başlatır. Bu,
-  // uygulama süreci OS tarafından öldürülüp yeniden başlatıldığında takibin
-  // kendini toparlamasını sağlar.
+  // görevlerini senkronize eder: paylaşım kapalıysa ikisini de durdurur;
+  // açıksa ve "her zaman izin ver" konum izni zaten verilmişse (burada
+  // YENİDEN SORULMAZ -- izin istemek yalnızca shareLocationNow/
+  // shareLocationBestEffort içindeki açık kullanıcı eylemlerinde olur)
+  // ikisini de (yeniden) başlatır. Bu, uygulama süreci OS tarafından
+  // öldürülüp yeniden başlatıldığında takibin kendini toparlamasını sağlar.
+  //
+  // Sürüş takibi (hız + rota, bkz. drivingLocationTask.ts) ARTIK ayrı bir
+  // onay/ekran değil -- Konum paylaşımıyla AYNI anahtara bağlı: paylaşım
+  // açıkken partner otomobille sürüş halindeyken (hız bir eşiğin üstünde
+  // kaldığı sürece) hızı/rotası otomatik olarak da görünür, kapalıyken
+  // ikisi de durur. İki ayrı görev olarak kalmaya devam ediyor (farklı
+  // sıklık/doğruluk -- bkz. drivingLocationTask.ts dosya başı açıklaması)
+  // ama kullanıcıya TEK bir anahtar olarak gösteriliyor.
   const syncBackgroundLocationTracking = useCallback(async (shared: boolean) => {
     try {
       if (!shared) {
         await stopBackgroundLocationTracking();
         setBackgroundLocationEnabled(false);
+        await stopDrivingLocationTracking().catch(() => {});
         return;
       }
       const bg = await Location.getBackgroundPermissionsAsync();
@@ -244,28 +246,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       const started = await startBackgroundLocationTracking();
       setBackgroundLocationEnabled(started);
+      await startDrivingLocationTracking().catch(() => {});
     } catch {
       setBackgroundLocationEnabled(false);
-    }
-  }, []);
-
-  // syncBackgroundLocationTracking ile aynı desen, sürüş takibi görevi için
-  // -- bkz. drivingLocationTask.ts. Arka plan izni yoksa (kullanıcı normal
-  // mesafe paylaşımı için "her zaman izin ver" vermemiş olabilir) sürüş
-  // paylaşımı sunucuda açık görünse bile cihazda sessizce devre dışı kalır.
-  const syncDrivingLocationTracking = useCallback(async (shared: boolean) => {
-    try {
-      if (!shared) {
-        await stopDrivingLocationTracking();
-        return;
-      }
-      const bg = await Location.getBackgroundPermissionsAsync();
-      if (bg.status !== Location.PermissionStatus.GRANTED) {
-        return;
-      }
-      await startDrivingLocationTracking();
-    } catch {
-      // sessizce vazgeç -- bir sonraki refresh()'te tekrar denenir.
     }
   }, []);
 
@@ -277,12 +260,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setDistanceKm(me.distanceKm);
       setLocationSharedByMe(me.locationSharedByMe);
       setLocationSharedByPartner(me.locationSharedByPartner);
-      setDrivingShareEnabled(me.drivingShareEnabled);
       setEntitlement(me.entitlement);
       // Fire-and-forget: ekranı bloklamaz, en kötü ihtimalle bir sonraki
-      // refresh()'te tekrar denenir.
+      // refresh()'te tekrar denenir. Sürüş takibi görevi de burada, konum
+      // paylaşımıyla BİRLİKTE senkronize edilir -- bkz.
+      // syncBackgroundLocationTracking.
       syncBackgroundLocationTracking(me.locationSharedByMe);
-      syncDrivingLocationTracking(me.drivingShareEnabled);
       // Çift bazlı abonelik: appUserID = coupleId, bkz.
       // src/subscriptions/purchases.ts başındaki açıklama.
       if (me.user.coupleId) {
@@ -294,7 +277,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // senkronizasyona kadar eski veriyi göstermeye devam eder.
       syncWidgetSnapshot(me).catch(() => {});
     },
-    [syncBackgroundLocationTracking, syncDrivingLocationTracking],
+    [syncBackgroundLocationTracking],
   );
 
   // Konumu izin varsa sessizce paylaşır; izin yoksa/istenmezse ya da GPS/ağ
@@ -334,6 +317,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (bgGranted) {
         const started = await startBackgroundLocationTracking();
         setBackgroundLocationEnabled(started);
+        await startDrivingLocationTracking().catch(() => {});
       } else {
         setBackgroundLocationEnabled(false);
       }
@@ -414,7 +398,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await stopBackgroundLocationTracking().catch(() => {});
         setBackgroundLocationEnabled(false);
         await stopDrivingLocationTracking().catch(() => {});
-        setDrivingShareEnabled(false);
         await deleteSecureItemAsync(TOKEN_KEY).catch(() => {});
         setAuthToken(null);
         setUser(null);
@@ -491,6 +474,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await stopBackgroundLocationTracking();
       setBackgroundLocationEnabled(false);
+      // Sürüş takibi artık Konum paylaşımıyla AYNI anahtara bağlı -- bkz.
+      // syncBackgroundLocationTracking. Burada da aynı şekilde birlikte
+      // durduruyoruz ki partnerin ekranında hayalet bir rota kalmasın
+      // (stopDrivingLocationTracking zaten sunucudaki aktif seyahati de
+      // POST /driving/stop ile temizliyor).
+      await stopDrivingLocationTracking().catch(() => {});
       await api.delete('/me/location');
       setLocationSharedByMe(false);
       setDistanceKm(null);
@@ -502,61 +491,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLocationSubmitting(false);
     }
   }, [refresh]);
-
-  // "Sürüş takibini paylaş" AÇILDIĞINDA: mesafe paylaşımından bağımsız
-  // olarak kendi "her zaman izin ver" konum iznini ister (mesafe paylaşımı
-  // hiç açılmamış olsa bile sürüş takibi tek başına açılabilsin diye) --
-  // bu izin olmadan sürüş algılama uygulama arka plandayken/kapalıyken
-  // çalışamaz.
-  const enableDrivingShare = useCallback(async () => {
-    setError(null);
-    setDrivingSubmitting(true);
-    try {
-      const current = await Location.getForegroundPermissionsAsync();
-      let granted = current.status === Location.PermissionStatus.GRANTED;
-      if (!granted) {
-        const requested = await Location.requestForegroundPermissionsAsync();
-        granted = requested.status === Location.PermissionStatus.GRANTED;
-      }
-      if (!granted) {
-        throw new Error('Konum izni verilmedi. Ayarlardan UsPulse için konum iznini açabilirsin.');
-      }
-      const bgCurrent = await Location.getBackgroundPermissionsAsync();
-      let bgGranted = bgCurrent.status === Location.PermissionStatus.GRANTED;
-      if (!bgGranted) {
-        const bgRequested = await Location.requestBackgroundPermissionsAsync();
-        bgGranted = bgRequested.status === Location.PermissionStatus.GRANTED;
-      }
-      if (!bgGranted) {
-        throw new Error(
-          'Sürüş takibi için "Her Zaman İzin Ver" konum izni gerekiyor. Ayarlar\'dan UsPulse için bunu açabilirsin.',
-        );
-      }
-      await api.put('/driving/share');
-      await startDrivingLocationTracking();
-      setDrivingShareEnabled(true);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sürüş takibi açılamadı.');
-      throw e;
-    } finally {
-      setDrivingSubmitting(false);
-    }
-  }, []);
-
-  const disableDrivingShare = useCallback(async () => {
-    setError(null);
-    setDrivingSubmitting(true);
-    try {
-      await stopDrivingLocationTracking();
-      await api.delete('/driving/share');
-      setDrivingShareEnabled(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sürüş takibi kapatılamadı.');
-      throw e;
-    } finally {
-      setDrivingSubmitting(false);
-    }
-  }, []);
 
   useEffect(() => {
     (async () => {
@@ -758,7 +692,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await stopBackgroundLocationTracking().catch(() => {});
     setBackgroundLocationEnabled(false);
     await stopDrivingLocationTracking().catch(() => {});
-    setDrivingShareEnabled(false);
     await refresh();
   }, [refresh]);
 
@@ -774,7 +707,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await stopBackgroundLocationTracking().catch(() => {});
     setBackgroundLocationEnabled(false);
     await stopDrivingLocationTracking().catch(() => {});
-    setDrivingShareEnabled(false);
     await logoutRevenueCat().catch(() => {});
     await deleteSecureItemAsync(TOKEN_KEY).catch(() => {});
     setAuthToken(null);
@@ -814,7 +746,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await stopBackgroundLocationTracking().catch(() => {});
     setBackgroundLocationEnabled(false);
     await stopDrivingLocationTracking().catch(() => {});
-    setDrivingShareEnabled(false);
     await logoutRevenueCat().catch(() => {});
     await deleteSecureItemAsync(TOKEN_KEY).catch(() => {});
     await deleteSecureItemAsync(BIOMETRIC_TOKEN_KEY).catch(() => {});
@@ -864,10 +795,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       shareLocationNow,
       stopSharingLocation,
       backgroundLocationEnabled,
-      drivingShareEnabled,
-      drivingSubmitting,
-      enableDrivingShare,
-      disableDrivingShare,
       hapticsEnabled,
       setHapticsEnabled,
       entitlement,
@@ -903,10 +830,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       shareLocationNow,
       stopSharingLocation,
       backgroundLocationEnabled,
-      drivingShareEnabled,
-      drivingSubmitting,
-      enableDrivingShare,
-      disableDrivingShare,
       hapticsEnabled,
       setHapticsEnabled,
       entitlement,

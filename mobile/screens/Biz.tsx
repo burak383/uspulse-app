@@ -10,8 +10,8 @@ import {
   Text,
   View,
 } from 'react-native';
-// bkz. Surus.tsx'teki aynı açıklama -- react-native'in kendi SafeAreaView'ı
-// yerine react-native-safe-area-context kullanıyoruz.
+// bkz. PartnerKonum.tsx'teki aynı açıklama -- react-native'in kendi
+// SafeAreaView'ı yerine react-native-safe-area-context kullanıyoruz.
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -233,10 +233,6 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     shareLocationNow,
     stopSharingLocation,
     backgroundLocationEnabled,
-    drivingShareEnabled,
-    drivingSubmitting,
-    enableDrivingShare,
-    disableDrivingShare,
     hapticsEnabled,
     setHapticsEnabled,
     refresh,
@@ -307,11 +303,16 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     }
   };
 
+  // Sürüş takibi (hız + rota) ARTIK ayrı bir anahtar/ekran DEĞİL -- bu
+  // anahtar açıkken partner otomobille sürüş halindeyken (hız bir eşiğin
+  // üzerine çıktığında) hızı/rotası da otomatik olarak partnerine CANLI
+  // gösterilir, sürüş bitince veri hemen silinir (geçmiş tutulmaz). bkz.
+  // PartnerKonum.tsx ve drivingLocationTask.ts.
   const toggleLocationSharing = async () => {
     if (locationSharedByMe) {
       const confirmed = await confirmAsync(
         'Konum paylaşımını kapat',
-        'Kapatırsan partnerin artık haritada anlık konumunu göremez, aranızdaki mesafe de gösterilmez ve arka plan konum takibi durur.',
+        'Kapatırsan partnerin artık haritada anlık konumunu göremez, aranızdaki mesafe de gösterilmez, araç kullanırken hızın/rotan artık paylaşılmaz ve arka plan takibi durur.',
         'Kapat',
       );
       if (!confirmed) return;
@@ -329,40 +330,12 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     // şartı: partnerin de açması gerekir, yoksa hiçbir taraf diğerini göremez).
     const confirmed = await confirmAsync(
       'Konum paylaşımını aç',
-      'Açarsan, ikiniz de paylaşımı açtığında partnerin anlık konumunu haritada canlı görebilecek, sen de onunkini görebileceksin. Bunun için önce konum iznini, ardından uygulama kapalıyken de güncel kalması için "Her Zaman İzin Ver" iznini isteyeceğiz.',
+      'Açarsan, ikiniz de paylaşımı açtığında partnerin anlık konumunu haritada canlı görebilecek, sen de onunkini görebileceksin -- araç kullanırken hızın ve rotan da otomatik olarak gösterilir. Bunun için önce konum iznini, ardından uygulama kapalıyken de güncel kalması için "Her Zaman İzin Ver" iznini isteyeceğiz.',
       'Devam et',
     );
     if (!confirmed) return;
     shareLocationNow().catch((e) => {
       Alert.alert('Konum paylaşılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
-    });
-  };
-
-  // "Konum" ayarından farkı: bu, elle açıp kapatılan sürekli bir paylaşım
-  // değil, sadece araçla sürüş halindeyken (hız eşiği aşıldığında) otomatik
-  // tetiklenen, sürüş bitince verisi hemen silinen GEÇİCİ bir paylaşım --
-  // bu yüzden hem açarken hem kapatırken ayrı, net bir onay metni var.
-  const toggleDrivingShare = async () => {
-    if (drivingShareEnabled) {
-      const confirmed = await confirmAsync(
-        'Sürüş takibini kapat',
-        'Kapatırsan sürüş halindeyken artık hızın ve rotan partnerine gösterilmez, aktif seyahatin hemen silinir.',
-        'Kapat',
-      );
-      if (!confirmed) return;
-      disableDrivingShare().catch(() => {
-        Alert.alert('Sürüş takibi kapatılamadı', 'Lütfen tekrar dene.');
-      });
-      return;
-    }
-    const confirmed = await confirmAsync(
-      'Sürüş takibini aç',
-      'Açarsan, otomobille sürüş halindeyken (hız belirli bir eşiğin üzerine çıktığında) anlık hızın ve izlediğin yol partnerine CANLI olarak gösterilir -- sürüş bitince veri hemen silinir, geçmiş tutulmaz. Bunun için "Her Zaman İzin Ver" konum izni gerekecek.',
-      'Devam et',
-    );
-    if (!confirmed) return;
-    enableDrivingShare().catch((e) => {
-      Alert.alert('Sürüş takibi açılamadı', e instanceof Error ? e.message : 'Lütfen tekrar dene.');
     });
   };
 
@@ -749,12 +722,12 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
               <Icon name="radar" size={15} color={backgroundLocationEnabled ? colors.success : colors.mutedForeground} />
               {backgroundLocationEnabled ? (
                 <Text style={styles.trackingText}>
-                  Arka planda da takip ediliyor -- uygulama kapalıyken bile mesafe güncel kalır.
+                  Arka planda da takip ediliyor -- uygulama kapalıyken bile mesafe (ve varsa sürüş halin) güncel kalır.
                 </Text>
               ) : (
                 <View style={styles.flex}>
                   <Text style={styles.trackingText}>
-                    Arka plan takibi kapalı -- mesafe yalnızca uygulamayı her açtığında güncellenir.
+                    Arka plan takibi kapalı -- mesafe ve sürüş takibi yalnızca uygulamayı her açtığında güncellenir.
                   </Text>
                   <Pressable onPress={() => Linking.openSettings()}>
                     <Text style={styles.trackingLink}>
@@ -769,7 +742,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
           <View style={styles.privacyList}>
             <PrivacyRow
               icon="map-marker-radius-outline"
-              label="Konum (canlı harita)"
+              label="Konum (canlı harita + sürüş)"
               color={colors.primary}
               value={locationSharedByMe ? 'Paylaşılıyor' : 'Kapalı'}
               active={locationSharedByMe}
@@ -781,21 +754,6 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
               label="Partnerinin konumunu gör"
               color={colors.primary}
               onPress={() => navigation.navigate('PartnerKonum')}
-            />
-            <PrivacyRow
-              icon="car-speed-limiter"
-              label="Sürüş takibi (hız + rota)"
-              color={colors.primary}
-              value={drivingShareEnabled ? 'Paylaşılıyor' : 'Kapalı'}
-              active={drivingShareEnabled}
-              loading={drivingSubmitting}
-              onPress={toggleDrivingShare}
-            />
-            <LinkRow
-              icon="map-marker-path"
-              label="Partnerinin sürüşünü gör"
-              color={colors.primary}
-              onPress={() => navigation.navigate('Surus')}
             />
             <PrivacyRow
               icon="creation"

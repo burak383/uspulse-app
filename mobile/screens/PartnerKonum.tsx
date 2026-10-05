@@ -3,19 +3,30 @@
 // yalnızca İKİNİZ DE konum paylaşımını açtıysanız sunucudan döner (karşılıklı
 // rıza şartı), bu ekran salt görüntüleme amaçlı; açma/kapama anahtarı
 // Biz.tsx'teki "Gizliliğiniz sizin elinizde" kartında.
+//
+// Sürüş takibi (hız + rota) ARTIK ayrı bir ekran/sekme DEĞİL -- buraya
+// gömülü: partner otomobille sürüş halindeyse (bkz. server/src/routes/
+// driving.ts GET /partner) harita normal avatar işaretçisi yerine canlı
+// rotayı ve hız kartını gösterir; sürüş halinde değilse (ya da hiç
+// paylaşmıyorsa) aşağıdaki normal konum görünümüne döner. Sürüş paylaşımı
+// AYRI bir onay gerektirmiyor -- Konum paylaşımı açıkken otomatik etkinleşir
+// (bkz. src/context/AuthContext.tsx syncBackgroundLocationTracking).
 import React, { useCallback, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-// bkz. Surus.tsx'teki aynı açıklama -- react-native'in kendi SafeAreaView'ı
-// yerine react-native-safe-area-context kullanıyoruz.
+// react-native'in kendi SafeAreaView'ı yalnızca iOS'ta gerçek bir şey yapar --
+// Android'de düz bir View'dan farksızdır (bkz. RN kaynağı), bu yüzden
+// react-native-safe-area-context'in App.tsx'teki SafeAreaProvider'dan gerçek
+// güvenli alan (status bar / gesture nav) değerlerini okuyan sürümünü
+// kullanıyoruz -- iki platformda da doğru boşluk bırakır.
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapView, { Callout, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Callout, Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { theme } from '../theme';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api/client';
-import { MeResponse, WeatherResponse } from '../src/api/types';
+import { DrivingPoint, DrivingStatusResponse, MeResponse, WeatherResponse } from '../src/api/types';
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 import { BottomTabBar } from '../src/components/BottomTabBar';
 import { AvatarView } from '../src/components/AvatarView';
@@ -23,8 +34,8 @@ import { parseSqliteTimestamp } from '../src/utils/date';
 
 const colors = theme.colors;
 
-// Sürüş ekranıyla aynı ritimde (bkz. Surus.tsx) -- ekran görünürken 5
-// saniyede bir tazeleniyor, ekrandan çıkınca durur.
+// Ekran görünürken 5 saniyede bir hem konumu hem sürüş durumunu tazeler,
+// ekrandan çıkınca durur.
 const POLL_MS = 5000;
 // Hava durumu, konum kadar sık değişmez -- ayrı ve çok daha seyrek bir
 // döngüyle çekiliyor (sunucu tarafında da ayrıca önbelleğe alınıyor, bkz.
@@ -64,33 +75,55 @@ type NavProp = NativeStackNavigationProp<RootStackParamList, 'PartnerKonum'>;
 export default function PartnerLocationScreen({ navigation }: { navigation: NavProp }) {
   const { partner } = useAuth();
   const [me, setMe] = useState<MeResponse | null>(null);
+  const [driving, setDriving] = useState<DrivingStatusResponse | null>(null);
   const [weather, setWeather] = useState<WeatherResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const mapRef = useRef<MapView>(null);
   const hasCentered = useRef(false);
+  const lastDrivingPointCount = useRef(0);
   // Artık Biz.tsx'teki bir menü satırından değil, diğer sekmeler (Yuva,
-  // Planlar, Anılar, Biz, Sürüş) gibi doğrudan alttaki sekme çubuğundan
-  // açılıyor -- bkz. navigation/RootNavigator.tsx ve
-  // src/components/BottomTabBar.tsx.
+  // Planlar, Anılar, Biz) gibi doğrudan alttaki sekme çubuğundan açılıyor --
+  // bkz. navigation/RootNavigator.tsx ve src/components/BottomTabBar.tsx.
   const goTab = (route: TabRouteName) => navigation.navigate(route);
 
   const load = useCallback(async () => {
     try {
-      const res = await api.get<MeResponse>('/me');
-      setMe(res);
-      if (res.partnerLat != null && res.partnerLng != null && !hasCentered.current) {
-        hasCentered.current = true;
-        mapRef.current?.animateToRegion(
-          {
-            latitude: res.partnerLat,
-            longitude: res.partnerLng,
-            latitudeDelta: 0.02,
-            longitudeDelta: 0.02,
-          },
-          300,
-        );
+      const [meRes, drivingRes] = await Promise.all([
+        api.get<MeResponse>('/me'),
+        api.get<DrivingStatusResponse>('/driving/partner').catch(
+          (): DrivingStatusResponse => ({ active: false }),
+        ),
+      ]);
+      setMe(meRes);
+      setDriving(drivingRes);
+
+      if (drivingRes.active && drivingRes.points.length > 0) {
+        if (drivingRes.points.length !== lastDrivingPointCount.current) {
+          lastDrivingPointCount.current = drivingRes.points.length;
+          mapRef.current?.fitToCoordinates(
+            drivingRes.points.map((p) => ({ latitude: p.lat, longitude: p.lng })),
+            {
+              edgePadding: { top: 80, right: 60, bottom: 160, left: 60 },
+              animated: true,
+            },
+          );
+        }
+      } else {
+        lastDrivingPointCount.current = 0;
+        if (meRes.partnerLat != null && meRes.partnerLng != null && !hasCentered.current) {
+          hasCentered.current = true;
+          mapRef.current?.animateToRegion(
+            {
+              latitude: meRes.partnerLat,
+              longitude: meRes.partnerLng,
+              latitudeDelta: 0.02,
+              longitudeDelta: 0.02,
+            },
+            300,
+          );
+        }
       }
-      if (res.partnerLat == null) {
+      if (meRes.partnerLat == null) {
         hasCentered.current = false;
       }
     } catch {
@@ -142,6 +175,9 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
   const partnerName = partner?.name ?? 'Partnerin';
   const shared = me?.partnerLat != null && me?.partnerLng != null;
   const stationaryText = formatStationaryDuration(me?.partnerStationarySince ?? null);
+  const isDriving = shared && driving?.active === true;
+  const lastDrivingPoint: DrivingPoint | null =
+    isDriving && driving.active && driving.points.length > 0 ? driving.points[driving.points.length - 1] : null;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -150,13 +186,56 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
       <View style={styles.header}>
         <View style={styles.headerCopy}>
           <Text style={styles.title}>Konum</Text>
-          <Text style={styles.subtitle}>{partnerName}'in şu anki konumu</Text>
+          <Text style={styles.subtitle}>
+            {isDriving ? `${partnerName} şu an sürüş halinde` : `${partnerName}'in şu anki konumu`}
+          </Text>
         </View>
       </View>
 
       {loading ? (
         <View style={styles.centered}>
           <ActivityIndicator color={colors.primary} size="large" />
+        </View>
+      ) : shared && me && isDriving && lastDrivingPoint ? (
+        <View style={styles.mapWrap}>
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFillObject}
+            provider={PROVIDER_GOOGLE}
+            initialRegion={{
+              latitude: lastDrivingPoint.lat,
+              longitude: lastDrivingPoint.lng,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            }}
+          >
+            {driving.active && driving.points.length > 1 && (
+              <Polyline
+                coordinates={driving.points.map((p) => ({ latitude: p.lat, longitude: p.lng }))}
+                strokeColor={colors.primary}
+                strokeWidth={4}
+              />
+            )}
+            <Marker
+              coordinate={{ latitude: lastDrivingPoint.lat, longitude: lastDrivingPoint.lng }}
+              title={partnerName}
+              description={driving.active ? `${driving.speedKmh} km/s` : undefined}
+            >
+              <View style={styles.markerDot}>
+                <MaterialCommunityIcons name="car" size={16} color={colors.primaryForeground} />
+              </View>
+            </Marker>
+          </MapView>
+
+          {driving.active && (
+            <View style={styles.speedCard}>
+              <MaterialCommunityIcons name="speedometer" size={22} color={colors.primary} />
+              <View>
+                <Text style={styles.speedValue}>{driving.speedKmh} km/s</Text>
+                <Text style={styles.speedCaption}>{partnerName} şu an sürüş halinde</Text>
+              </View>
+            </View>
+          )}
         </View>
       ) : shared && me ? (
         <View style={styles.mapWrap}>
@@ -229,8 +308,8 @@ export default function PartnerLocationScreen({ navigation }: { navigation: NavP
           <MaterialCommunityIcons name="map-marker-off-outline" size={40} color={colors.mutedForeground} />
           <Text style={styles.emptyTitle}>Konum paylaşımı kapalı</Text>
           <Text style={styles.emptyCaption}>
-            {partnerName}'in konumunu görebilmen için ikinizin de Biz sekmesinden konum paylaşımını
-            açmış olması gerekiyor.
+            {partnerName}'in konumunu (ve varsa sürüş halini) görebilmen için ikinizin de Biz sekmesinden
+            konum paylaşımını açmış olması gerekiyor.
           </Text>
         </View>
       )}
@@ -315,6 +394,27 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
     backgroundColor: colors.border,
   },
+  speedCard: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    // bkz. distanceCard'daki aynı gerekçe -- alttaki sekme çubuğunun üstünde
+    // kalması için 24 yerine 100.
+    bottom: 100,
+    backgroundColor: colors.card,
+    borderRadius: 18,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  speedValue: { fontFamily: theme.fonts.heading, fontSize: 20, color: colors.foreground },
+  speedCaption: { fontFamily: theme.fonts.body, fontSize: 12, color: colors.mutedForeground },
   calloutCard: {
     minWidth: 150,
     maxWidth: 220,

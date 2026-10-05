@@ -124,9 +124,6 @@ router.get('/', requireAuth, (req, res) => {
     // avatarına dokununca gösteriliyor (bkz. mobile/screens/PartnerKonum.tsx).
     // Aynı karşılıklılık şartına tabi.
     partnerStationarySince: mutualShare ? partner.stationary_since : null,
-    // Sürüş takibi paylaşımı (bkz. routes/driving.ts) diğer cihazlarla
-    // senkron kalması için sunucu tarafında (AsyncStorage değil) tutulur.
-    drivingShareEnabled: Boolean(row.driving_share_enabled),
     entitlement,
   });
 });

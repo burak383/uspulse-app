@@ -1,12 +1,11 @@
-// react-native-maps'in web karşılığı yok (bkz. Surus.web.tsx'teki aynı not)
-// -- bu yüzden bu ekranın da web'e özel basit bir sürümü var. Dosya
-// adındaki ".web" uzantısı sayesinde Metro, web derlemesinde otomatik
-// olarak BU dosyayı, Android/iOS derlemesinde ise haritalı gerçek sürümü
-// (PartnerKonum.tsx) kullanır.
+// react-native-maps'in web karşılığı yok -- bu yüzden bu ekranın da web'e
+// özel basit bir sürümü var. Dosya adındaki ".web" uzantısı sayesinde Metro,
+// web derlemesinde otomatik olarak BU dosyayı, Android/iOS derlemesinde ise
+// haritalı gerçek sürümü (PartnerKonum.tsx) kullanır.
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-// bkz. Surus.tsx'teki aynı açıklama -- react-native'in kendi SafeAreaView'ı
-// yerine react-native-safe-area-context kullanıyoruz.
+// bkz. PartnerKonum.tsx'teki aynı açıklama -- react-native'in kendi
+// SafeAreaView'ı yerine react-native-safe-area-context kullanıyoruz.
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';

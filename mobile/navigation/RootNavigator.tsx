@@ -15,7 +15,6 @@ import PlansScreen from '../screens/Planlar';
 import MemoriesScreen from '../screens/AnLar';
 import TogetherScreen from '../screens/Biz';
 import DailyQuestionScreen from '../screens/GNNSorusu';
-import DrivingScreen from '../screens/Surus';
 import PartnerLocationScreen from '../screens/PartnerKonum';
 import AvatarSelectionScreen from '../screens/AvatarSecimi';
 import ChatScreen from '../screens/Sohbet';
@@ -44,7 +43,6 @@ function ScreenStack({ needsAvatar, accessBlocked }: { needsAvatar: boolean; acc
           <Stack.Screen name="GununSorusu" component={DailyQuestionScreen} />
           <Stack.Screen name="Sohbet" component={ChatScreen} />
           <Stack.Screen name="AskDili" component={LoveLanguageScreen} />
-          <Stack.Screen name="Surus" component={DrivingScreen} />
           <Stack.Screen name="PartnerKonum" component={PartnerLocationScreen} />
           <Stack.Screen name="AvatarSecimi" component={AvatarSelectionScreen} />
         </>

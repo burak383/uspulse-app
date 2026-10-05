@@ -7,7 +7,6 @@ export type RootStackParamList = {
   Anilar: undefined;
   Biz: undefined;
   GununSorusu: undefined;
-  Surus: undefined;
   PartnerKonum: undefined;
   // editing: true -- Biz.tsx'teki "Profil fotoğrafını değiştir" dokunuşuyla
   // açıldığını AÇIKÇA belirtir (bkz. AvatarSecimi.tsx). Bunu
@@ -22,8 +21,9 @@ export type RootStackParamList = {
   AskDili: undefined;
 };
 
-// Konum ve Sürüş, alt sekme çubuğuna eklendi (bkz.
-// src/components/BottomTabBar.tsx) -- artık Biz sekmesindeki menü
-// satırlarından değil, diğer 4 sekme gibi doğrudan alttaki çubuktan
-// açılıyorlar.
-export type TabRouteName = 'Yuva' | 'Planlar' | 'Anilar' | 'Biz' | 'PartnerKonum' | 'Surus';
+// Konum, alt sekme çubuğuna eklendi (bkz. src/components/BottomTabBar.tsx)
+// -- artık Biz sekmesindeki menü satırlarından değil, diğer sekmeler gibi
+// doğrudan alttaki çubuktan açılıyor. Sürüş artık ayrı bir sekme/ekran
+// DEĞİL -- Konum paylaşımı açıkken partner araba sürüşüne geçtiğinde hız ve
+// rotası otomatik olarak bu aynı PartnerKonum ekranında gösteriliyor.
+export type TabRouteName = 'Yuva' | 'Planlar' | 'Anilar' | 'Biz' | 'PartnerKonum';
