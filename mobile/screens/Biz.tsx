@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -46,6 +47,13 @@ const LEGAL_BASE_URL = API_URL.replace(/\/api\/?$/, '');
 // Google'ın kendi rehberi e-posta/form üzerinden bildirimi yeterli kabul
 // ediyor, tek şart uygulamadan ayrılmadan (bir menüden) erişilebilir olması.
 const SUPPORT_EMAIL = process.env.EXPO_PUBLIC_SUPPORT_EMAIL || 'seolen8@gmail.com';
+
+// "Uygulamayı paylaş" / "Uygulamayı puanla" satırları için mağaza
+// bağlantıları. Android paketi app.json'daki android.package ile, iOS kimliği
+// eas.json'daki submit.production.ios.ascAppId ile aynı olmalı.
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=app.uspulse.mobile';
+const APP_STORE_URL = 'https://apps.apple.com/app/id6810957187';
+const STORE_URL = Platform.OS === 'ios' ? APP_STORE_URL : PLAY_STORE_URL;
 
 // bkz. ELe.tsx'teki aynı yardımcı: RoundIcon'un arka planı, ikonun kendi
 // rengiyle aynı katı tonda değil, o rengin soluk (alfa'lı) bir versiyonu
@@ -428,6 +436,25 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
     }
   };
 
+  // Uygulamayı arkadaş/aileyle paylaşma -- hazır bir mesajla mağaza
+  // bağlantısını sistemin paylaş menüsüne verir.
+  const shareApp = async () => {
+    try {
+      await Share.share({
+        message: `UsPulse'ü dene: partnerinle planlar, anılar, sohbet ve canlı konum tek yerde. ${STORE_URL}`,
+      });
+    } catch {
+      // sharing cancelled
+    }
+  };
+
+  // Uygulamayı puanlama -- mağaza sayfasını açar.
+  const rateApp = () => {
+    Linking.openURL(STORE_URL).catch(() => {
+      Alert.alert('Açılamadı', 'Mağaza sayfası açılırken bir sorun oluştu. Lütfen tekrar dene.');
+    });
+  };
+
   const copyInviteCode = async () => {
     if (!user?.inviteCode) return;
     try {
@@ -781,7 +808,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
             <RoundIcon name="lifebuoy" color={colors.primary} backgroundColor={colors.primary} size={21} />
             <View>
               <Text style={styles.cardTitle}>Yardım ve Güvenlik</Text>
-              <Text style={styles.caption}>Bir sorunu bize bildir, sözleşmelerimize göz at.</Text>
+              <Text style={styles.caption}>Bir sorunu bize bildir, sözleşmelerimize göz at, uygulamayı paylaş ya da puanla.</Text>
             </View>
           </View>
 
@@ -809,6 +836,18 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
               label="Kullanım Koşulları"
               color={colors.primary}
               onPress={() => openLegalPage('/terms')}
+            />
+            <LinkRow
+              icon="share-variant-outline"
+              label="Uygulamayı paylaş"
+              color={colors.primary}
+              onPress={shareApp}
+            />
+            <LinkRow
+              icon="star-outline"
+              label="Uygulamayı puanla"
+              color={colors.primary}
+              onPress={rateApp}
             />
           </View>
         </View>
