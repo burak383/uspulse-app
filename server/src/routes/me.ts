@@ -193,6 +193,11 @@ router.delete('/location', requireAuth, (req, res) => {
   ).run(
     req.user!.id,
   );
+  // Sürüş takibi konum paylaşımına bağlı (bkz. routes/driving.ts) -- konum
+  // kapanınca aktif seyahat de hemen silinir. İstemci de POST /driving/stop
+  // çağırır ama o istek ağ hatasıyla kaybolursa partnerin ekranında hayalet
+  // bir rota kalmasın diye sunucu tarafında da temizliyoruz.
+  db.prepare('DELETE FROM driving_trips WHERE user_id = ?').run(req.user!.id);
   res.status(204).end();
 });
 

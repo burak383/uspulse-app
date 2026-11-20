@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from 'react-native';
-// bkz. Surus.tsx'teki aynı açıklama -- react-native'in kendi SafeAreaView'ı
+// bkz. PartnerKonum.tsx'teki aynı açıklama -- react-native'in kendi SafeAreaView'ı
 // yerine react-native-safe-area-context kullanıyoruz.
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';

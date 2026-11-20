@@ -2,7 +2,7 @@
 // çubuğunda YER ALMIYOR (bkz. navigation/types.ts) -- Günün Sorusu ile aynı
 // desende, Yuva ekranındaki sohbet ikonundan (bkz. Yuva.tsx headerActions)
 // tek dokunuşla açılan ayrı bir stack ekranı. WebSocket/gerçek zamanlı bir
-// altyapı yok -- diğer canlı ekranlarla (PartnerKonum, Surus) aynı basit
+// altyapı yok -- diğer canlı ekranlarla (PartnerKonum) aynı basit
 // polling deseni kullanılıyor, sadece sohbetin doğası gereği daha sık
 // (POLL_MS) tazeleniyor.
 import React, { useCallback, useEffect, useRef, useState } from 'react';

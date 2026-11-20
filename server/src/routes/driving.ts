@@ -117,6 +117,18 @@ router.post('/stop', (req, res) => {
 // döndürür. Sadece EŞLEŞMİŞ partner görebilir, başka hiç kimse değil.
 router.get('/partner', (req, res) => {
   const coupleId = req.user!.coupleId!;
+
+  // Sürüş artık Konum paylaşımının bir parçası -- normal harita gibi
+  // KARŞILIKLI: sen de konum paylaşmıyorsan partnerin sürüşünü göremezsin
+  // (bkz. routes/me.ts mutualShare). İstemci de bunu ayrıca kontrol ediyor
+  // ama asıl koruma burada, sunucuda olmalı.
+  const meRow = db.prepare('SELECT lat FROM users WHERE id = ?').get(req.user!.id) as
+    | { lat: number | null }
+    | undefined;
+  if (meRow?.lat == null) {
+    return res.json({ active: false });
+  }
+
   const row = db
     .prepare('SELECT * FROM driving_trips WHERE couple_id = ? AND user_id != ?')
     .get(coupleId, req.user!.id) as TripRow | undefined;
