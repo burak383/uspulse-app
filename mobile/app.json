@@ -108,6 +108,7 @@
         }
       ],
       "expo-video",
+      "./plugins/withOptionalPortrait",
       "@bacons/apple-targets",
       [
         "react-native-android-widget",
