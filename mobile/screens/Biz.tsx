@@ -31,6 +31,7 @@ import { confirmAsync } from '../src/utils/confirm';
 import { AvatarView } from '../src/components/AvatarView';
 import { removeAvatar as removeAvatarRequest } from '../src/media/avatarUpload';
 import { BottomTabBar } from '../src/components/BottomTabBar';
+import { WelcomeTour } from '../src/components/WelcomeTour';
 import { LOVE_LANGUAGE_QUESTIONS } from '../src/quiz/askDili';
 
 const colors = theme.colors;
@@ -248,6 +249,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
   const [touches, setTouches] = useState<TouchesResponse | null>(null);
   const [lockedMemories, setLockedMemories] = useState(0);
   const [deleting, setDeleting] = useState(false);
+  const [tourVisible, setTourVisible] = useState(false);
   const [endingRelationship, setEndingRelationship] = useState(false);
   const [hapticsSubmitting, setHapticsSubmitting] = useState(false);
   const [mood, setMood] = useState<MoodResponse | null>(null);
@@ -814,6 +816,12 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
 
           <View style={styles.privacyList}>
             <LinkRow
+              icon="help-circle-outline"
+              label="Nasıl kullanılır? (tanıtım turu)"
+              color={colors.primary}
+              onPress={() => setTourVisible(true)}
+            />
+            <LinkRow
               icon="flag-outline"
               label="Bir sorun bildir"
               color={colors.destructive}
@@ -884,6 +892,7 @@ export default function TogetherScreen({ navigation }: { navigation: NavProp }) 
       </ScrollView>
 
       <BottomTabBar active="Biz" onNavigate={goTab} />
+      <WelcomeTour visible={tourVisible} onClose={() => setTourVisible(false)} />
     </SafeAreaView>
   );
 }

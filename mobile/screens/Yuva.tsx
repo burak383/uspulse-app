@@ -24,6 +24,7 @@ import { MoodResponse, NotificationsResponse, TodayQuestion, TouchesResponse } f
 import { RootStackParamList, TabRouteName } from '../navigation/types';
 import { isoDateToDisplay } from '../src/utils/date';
 import { BottomTabBar } from '../src/components/BottomTabBar';
+import { WelcomeTour, useAutoWelcomeTour } from '../src/components/WelcomeTour';
 
 const { colors, fonts } = theme;
 
@@ -108,6 +109,8 @@ type NavProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function HomeScreen({ navigation }: { navigation: NavProp }) {
   const { user, partner, couple, hapticsEnabled, pendingTabRedirect, clearPendingTabRedirect } = useAuth();
+  // İlk kullanımda bir kez otomatik açılan tanıtım turu (bkz. WelcomeTour.tsx).
+  const { visible: tourVisible, setVisible: setTourVisible } = useAutoWelcomeTour();
 
   // bkz. AuthContext.tsx pendingTabRedirect açıklaması ve AvatarSecimi.tsx
   // handleFinish -- ilk kurulumda avatar seçimi tamamlandığında RootNavigator
@@ -558,6 +561,7 @@ export default function HomeScreen({ navigation }: { navigation: NavProp }) {
       </ScrollView>
 
       <BottomTabBar active="Yuva" onNavigate={goTab} />
+      <WelcomeTour visible={tourVisible} onClose={() => setTourVisible(false)} />
     </SafeAreaView>
   );
 }
